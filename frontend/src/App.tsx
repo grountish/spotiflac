@@ -5,7 +5,7 @@ import { Search, X, ArrowUp } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getSettings, getSettingsWithDefaults, loadSettings, saveSettings, applyThemeMode, applyFont } from "@/lib/settings";
 import { applyTheme } from "@/lib/themes";
-import { OpenFolder, CheckFFmpegInstalled, DownloadFFmpeg, GetFetchHistory, GetRecentFetches, SaveRecentFetches } from "../wailsjs/go/main/App";
+import { OpenFolder, CheckFFmpegInstalled, DownloadFFmpeg, GetAudioPlaybackURL, GetFetchHistory, GetRecentFetches, SaveRecentFetches } from "../wailsjs/go/main/App";
 import { EventsOn, EventsOff, Quit } from "../wailsjs/runtime/runtime";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import { TitleBar } from "@/components/TitleBar";
@@ -37,7 +37,6 @@ import { ensureApiStatusCheckStarted } from "@/lib/api-status";
 import { useDownloadQueueDialog } from "@/hooks/useDownloadQueueDialog";
 import { useDownloadProgress } from "@/hooks/useDownloadProgress";
 import { buildPlaylistFolderName } from "@/lib/playlist";
-import { ReadAudioFileAsDataURL } from "../wailsjs/go/main/App";
 import { buildLocalCollectionPlaybackTargetFromMetadata, type LocalCollectionPlaybackTarget } from "@/lib/local-playback";
 import type { SpotifyMetadataResponse } from "@/types/api";
 const HISTORY_KEY = "spotiflac_fetch_history";
@@ -164,15 +163,18 @@ function App() {
     const cover = useCover();
     const availability = useAvailability();
     const downloadQueue = useDownloadQueueDialog();
-    const downloadProgress = useDownloadProgress();
     const localPlayer = useLocalAudioPlayer({
-        resolveSource: ReadAudioFileAsDataURL,
+        resolveSource: GetAudioPlaybackURL,
     });
     const [activeLocalCollection, setActiveLocalCollection] = useState<LocalCollectionPlaybackTarget | null>(null);
     const [isFFmpegInstalled, setIsFFmpegInstalled] = useState<boolean | null>(null);
     const [isInstallingFFmpeg, setIsInstallingFFmpeg] = useState(false);
     const [ffmpegInstallProgress, setFfmpegInstallProgress] = useState(0);
     const [ffmpegInstallStatus, setFfmpegInstallStatus] = useState("");
+    const downloadProgress = useDownloadProgress({
+        enabled: isInstallingFFmpeg,
+        intervalMs: 500,
+    });
     useLayoutEffect(() => {
         const savedSettings = getSettings();
         if (savedSettings) {

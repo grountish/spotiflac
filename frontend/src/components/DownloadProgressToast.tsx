@@ -6,9 +6,13 @@ interface DownloadProgressToastProps {
     onClick: () => void;
 }
 export function DownloadProgressToast({ onClick }: DownloadProgressToastProps) {
-    const progress = useDownloadProgress();
-    const queueInfo = useDownloadQueueData();
+    const queueInfo = useDownloadQueueData({ intervalMs: 1000 });
     const hasActiveDownloads = queueInfo.queue.some(item => item.status === "queued" || item.status === "downloading");
+    const progress = useDownloadProgress({
+        enabled: hasActiveDownloads,
+        intervalMs: 500,
+    });
+
     if (!hasActiveDownloads) {
         return null;
     }

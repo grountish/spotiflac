@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"os"
 
@@ -23,7 +24,10 @@ import (
 )
 
 type App struct {
-	ctx context.Context
+	audioServer         *http.Server
+	audioServerBaseURL  string
+	audioServerListener net.Listener
+	ctx                 context.Context
 }
 
 type CurrentIPInfo struct {
@@ -332,6 +336,7 @@ func (a *App) getFirstArtist(artistString string) string {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.startAudioServer()
 
 	if err := backend.InitHistoryDB("SpotiFLAC"); err != nil {
 		fmt.Printf("Failed to init history DB: %v\n", err)
@@ -345,9 +350,81 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	a.stopAudioServer()
 	backend.CloseHistoryDB()
 	backend.CloseISRCCacheDB()
 	backend.CloseProviderPriorityDB()
+}
+
+func (a *App) startAudioServer() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/audio", func(w http.ResponseWriter, r *http.Request) {
+		filePath := strings.TrimSpace(r.URL.Query().Get("path"))
+		if filePath == "" {
+			http.Error(w, "missing audio path", http.StatusBadRequest)
+			return
+		}
+
+		info, err := os.Stat(filePath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				http.NotFound(w, r)
+				return
+			}
+			http.Error(w, "failed to access audio file", http.StatusInternalServerError)
+			return
+		}
+		if info.IsDir() {
+			http.Error(w, "audio path is a directory", http.StatusBadRequest)
+			return
+		}
+
+		file, err := os.Open(filePath)
+		if err != nil {
+			http.Error(w, "failed to open audio file", http.StatusInternalServerError)
+			return
+		}
+		defer file.Close()
+
+		w.Header().Set("Accept-Ranges", "bytes")
+		w.Header().Set("Content-Type", getAudioMimeType(filePath))
+		http.ServeContent(w, r, filepath.Base(filePath), info.ModTime(), file)
+	})
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		fmt.Printf("Failed to start local audio server: %v\n", err)
+		return
+	}
+
+	a.audioServerListener = listener
+	a.audioServerBaseURL = "http://" + listener.Addr().String()
+	a.audioServer = &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	go func() {
+		if err := a.audioServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			fmt.Printf("Local audio server stopped unexpectedly: %v\n", err)
+		}
+	}()
+}
+
+func (a *App) stopAudioServer() {
+	if a.audioServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = a.audioServer.Shutdown(ctx)
+		a.audioServer = nil
+	}
+
+	if a.audioServerListener != nil {
+		_ = a.audioServerListener.Close()
+		a.audioServerListener = nil
+	}
+
+	a.audioServerBaseURL = ""
 }
 
 type SpotifyMetadataRequest struct {
@@ -1648,6 +1725,22 @@ func (a *App) ReadAudioFileAsDataURL(filePath string) (string, error) {
 	mimeType := getAudioMimeType(filePath)
 	encoded := base64.StdEncoding.EncodeToString(content)
 	return fmt.Sprintf("data:%s;base64,%s", mimeType, encoded), nil
+}
+
+func (a *App) GetAudioPlaybackURL(filePath string) (string, error) {
+	if filePath == "" {
+		return "", fmt.Errorf("file path is required")
+	}
+
+	if a.audioServerBaseURL == "" {
+		return "", fmt.Errorf("local audio server is not available")
+	}
+
+	if _, err := os.Stat(filePath); err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%s/audio?path=%s", a.audioServerBaseURL, url.QueryEscape(filePath)), nil
 }
 
 func (a *App) DeleteFiles(paths []string) error {
