@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, } from "@/components/ui/dialog";
 import { Search, X, ArrowUp } from "lucide-react";
@@ -34,13 +34,6 @@ import { buildLocalCollectionPlaybackTargetFromMetadata, type LocalCollectionPla
 import type { SpotifyMetadataResponse } from "@/types/api";
 const HISTORY_KEY = "spotiflac_fetch_history";
 const MAX_HISTORY = 5;
-const DebugLoggerPage = lazy(() => import("@/components/DebugLoggerPage").then((module) => ({ default: module.DebugLoggerPage })));
-const AboutPage = lazy(() => import("@/components/AboutPage").then((module) => ({ default: module.AboutPage })));
-const HistoryPage = lazy(() => import("@/components/HistoryPage").then((module) => ({ default: module.HistoryPage })));
-const AudioAnalysisPage = lazy(() => import("@/components/AudioAnalysisPage").then((module) => ({ default: module.AudioAnalysisPage })));
-const AudioConverterPage = lazy(() => import("@/components/AudioConverterPage").then((module) => ({ default: module.AudioConverterPage })));
-const AudioResamplerPage = lazy(() => import("@/components/AudioResamplerPage").then((module) => ({ default: module.AudioResamplerPage })));
-const FileManagerPage = lazy(() => import("@/components/FileManagerPage").then((module) => ({ default: module.FileManagerPage })));
 interface CachedFetchHistoryItem {
     id: string;
     url: string;
@@ -692,32 +685,10 @@ function App() {
         setSelectedTracks([]);
         metadata.resetMetadata();
     }, [metadata]);
-    const renderDeferredPage = useCallback((page: React.ReactNode) => (
-        <Suspense fallback={<div className="rounded-xl border bg-card/60 p-6 text-sm text-muted-foreground">Loading page…</div>}>
-            {page}
-        </Suspense>
-    ), []);
     const renderPage = () => {
         switch (currentPage) {
             case "settings":
                 return <SettingsPage onUnsavedChangesChange={setHasUnsavedSettings} onResetRequest={setResetSettingsFn}/>;
-            case "debug":
-                return renderDeferredPage(<DebugLoggerPage />);
-            case "about":
-                return renderDeferredPage(<AboutPage />);
-            case "history":
-                return renderDeferredPage(<HistoryPage onHistorySelect={(cachedData) => {
-                        metadata.loadFromCache(cachedData);
-                        setCurrentPage("main");
-                    }}/>);
-            case "audio-analysis":
-                return renderDeferredPage(<AudioAnalysisPage />);
-            case "audio-converter":
-                return renderDeferredPage(<AudioConverterPage />);
-            case "audio-resampler":
-                return renderDeferredPage(<AudioResamplerPage />);
-            case "file-manager":
-                return renderDeferredPage(<FileManagerPage />);
             default:
                 return (<>
                     <Dialog open={metadata.showAlbumDialog} onOpenChange={metadata.setShowAlbumDialog}>
