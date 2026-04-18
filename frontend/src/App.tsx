@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { lazy, Suspense, useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, } from "@/components/ui/dialog";
 import { Search, X, ArrowUp } from "lucide-react";
@@ -17,14 +17,7 @@ import { PlaylistInfo } from "@/components/PlaylistInfo";
 import { ArtistInfo } from "@/components/ArtistInfo";
 import { DownloadQueue } from "@/components/DownloadQueue";
 import { DownloadProgressToast } from "@/components/DownloadProgressToast";
-import { AudioAnalysisPage } from "@/components/AudioAnalysisPage";
-import { AudioConverterPage } from "@/components/AudioConverterPage";
-import { AudioResamplerPage } from "@/components/AudioResamplerPage";
-import { FileManagerPage } from "@/components/FileManagerPage";
 import { SettingsPage } from "@/components/SettingsPage";
-import { DebugLoggerPage } from "@/components/DebugLoggerPage";
-import { AboutPage } from "@/components/AboutPage";
-import { HistoryPage } from "@/components/HistoryPage";
 import type { HistoryItem } from "@/components/FetchHistory";
 import { LocalPlayerSidebar } from "@/components/LocalPlayerSidebar";
 import { useDownload } from "@/hooks/useDownload";
@@ -41,6 +34,13 @@ import { buildLocalCollectionPlaybackTargetFromMetadata, type LocalCollectionPla
 import type { SpotifyMetadataResponse } from "@/types/api";
 const HISTORY_KEY = "spotiflac_fetch_history";
 const MAX_HISTORY = 5;
+const DebugLoggerPage = lazy(() => import("@/components/DebugLoggerPage").then((module) => ({ default: module.DebugLoggerPage })));
+const AboutPage = lazy(() => import("@/components/AboutPage").then((module) => ({ default: module.AboutPage })));
+const HistoryPage = lazy(() => import("@/components/HistoryPage").then((module) => ({ default: module.HistoryPage })));
+const AudioAnalysisPage = lazy(() => import("@/components/AudioAnalysisPage").then((module) => ({ default: module.AudioAnalysisPage })));
+const AudioConverterPage = lazy(() => import("@/components/AudioConverterPage").then((module) => ({ default: module.AudioConverterPage })));
+const AudioResamplerPage = lazy(() => import("@/components/AudioResamplerPage").then((module) => ({ default: module.AudioResamplerPage })));
+const FileManagerPage = lazy(() => import("@/components/FileManagerPage").then((module) => ({ default: module.FileManagerPage })));
 interface CachedFetchHistoryItem {
     id: string;
     url: string;
@@ -692,27 +692,32 @@ function App() {
         setSelectedTracks([]);
         metadata.resetMetadata();
     }, [metadata]);
+    const renderDeferredPage = useCallback((page: React.ReactNode) => (
+        <Suspense fallback={<div className="rounded-xl border bg-card/60 p-6 text-sm text-muted-foreground">Loading page…</div>}>
+            {page}
+        </Suspense>
+    ), []);
     const renderPage = () => {
         switch (currentPage) {
             case "settings":
                 return <SettingsPage onUnsavedChangesChange={setHasUnsavedSettings} onResetRequest={setResetSettingsFn}/>;
             case "debug":
-                return <DebugLoggerPage />;
+                return renderDeferredPage(<DebugLoggerPage />);
             case "about":
-                return <AboutPage />;
+                return renderDeferredPage(<AboutPage />);
             case "history":
-                return <HistoryPage onHistorySelect={(cachedData) => {
+                return renderDeferredPage(<HistoryPage onHistorySelect={(cachedData) => {
                         metadata.loadFromCache(cachedData);
                         setCurrentPage("main");
-                    }}/>;
+                    }}/>);
             case "audio-analysis":
-                return <AudioAnalysisPage />;
+                return renderDeferredPage(<AudioAnalysisPage />);
             case "audio-converter":
-                return <AudioConverterPage />;
+                return renderDeferredPage(<AudioConverterPage />);
             case "audio-resampler":
-                return <AudioResamplerPage />;
+                return renderDeferredPage(<AudioResamplerPage />);
             case "file-manager":
-                return <FileManagerPage />;
+                return renderDeferredPage(<FileManagerPage />);
             default:
                 return (<>
                     <Dialog open={metadata.showAlbumDialog} onOpenChange={metadata.setShowAlbumDialog}>
@@ -763,6 +768,7 @@ function App() {
         }
     };
     const showGlobalPlayer = !!activeLocalCollection && localPlayer.tracks.length > 0;
+    const shouldShowDownloadToast = isInstallingFFmpeg || download.isDownloading || download.downloadingTrack !== null || downloadQueue.isOpen;
     return (<TooltipProvider>
         <div className="min-h-screen bg-background flex flex-col">
             <TitleBar />
@@ -780,14 +786,13 @@ function App() {
                                 collectionImageUrl={activeLocalCollection.imageUrl}
                                 collectionSubtitle={activeLocalCollection.subtitle}
                                 collectionTitle={activeLocalCollection.title}
-                                currentTime={localPlayer.currentTime}
                                 currentTrack={localPlayer.currentTrack}
                                 currentTrackId={localPlayer.currentTrackId}
-                                duration={localPlayer.duration}
                                 isPlaying={localPlayer.isPlaying}
                                 loadingTrackId={localPlayer.loadingTrackId}
                                 onNext={localPlayer.playNext}
                                 onPrevious={localPlayer.playPrevious}
+                                progressStore={localPlayer.progressStore}
                                 onSeek={localPlayer.seekTo}
                                 onToggleTrack={localPlayer.toggleTrack}
                                 tracks={localPlayer.tracks}
@@ -797,11 +802,14 @@ function App() {
                 </div>
             </div>
 
+            {shouldShowDownloadToast && (
+                <DownloadProgressToast onClick={downloadQueue.openQueue}/>
+            )}
 
-            <DownloadProgressToast onClick={downloadQueue.openQueue}/>
 
-
-            <DownloadQueue isOpen={downloadQueue.isOpen} onClose={downloadQueue.closeQueue}/>
+            {downloadQueue.isOpen && (
+                <DownloadQueue isOpen={downloadQueue.isOpen} onClose={downloadQueue.closeQueue}/>
+            )}
 
 
             {showScrollTop && (<Button onClick={scrollToTop} className="fixed bottom-6 right-6 z-50 h-10 w-10 rounded-full shadow-lg" size="icon">

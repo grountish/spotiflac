@@ -3,20 +3,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useEffect, useState } from "react";
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
-import type { LocalAudioTrack } from "@/hooks/useLocalAudioPlayer";
+import { useLocalAudioPlayerProgress, type LocalAudioPlayerProgressStore, type LocalAudioTrack } from "@/hooks/useLocalAudioPlayer";
 
 interface LocalPlayerSidebarProps {
     collectionImageUrl?: string;
     collectionSubtitle?: string;
     collectionTitle: string;
-    currentTime: number;
     currentTrack: LocalAudioTrack | null;
     currentTrackId: string | null;
-    duration: number;
     isPlaying: boolean;
     loadingTrackId: string | null;
     onNext: () => void | Promise<void>;
     onPrevious: () => void | Promise<void>;
+    progressStore: LocalAudioPlayerProgressStore;
     onSeek: (time: number) => void;
     onToggleTrack: (track: LocalAudioTrack) => void | Promise<void>;
     tracks: LocalAudioTrack[];
@@ -36,14 +35,13 @@ export function LocalPlayerSidebar({
     collectionImageUrl,
     collectionSubtitle,
     collectionTitle,
-    currentTime,
     currentTrack,
     currentTrackId,
-    duration,
     isPlaying,
     loadingTrackId,
     onNext,
     onPrevious,
+    progressStore,
     onSeek,
     onToggleTrack,
     tracks,
@@ -51,6 +49,8 @@ export function LocalPlayerSidebar({
     if (tracks.length === 0) {
         return null;
     }
+
+    const { currentTime, duration } = useLocalAudioPlayerProgress(progressStore);
 
     const currentTrackIndex = tracks.findIndex((track) => track.id === currentTrackId);
     const hasActiveTrack = !!currentTrack && currentTrackIndex >= 0;

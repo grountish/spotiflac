@@ -386,6 +386,9 @@ func (a *App) startAudioServer() {
 		}
 		defer file.Close()
 
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
 		w.Header().Set("Accept-Ranges", "bytes")
 		w.Header().Set("Content-Type", getAudioMimeType(filePath))
 		http.ServeContent(w, r, filepath.Base(filePath), info.ModTime(), file)

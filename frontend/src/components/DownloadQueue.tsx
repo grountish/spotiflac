@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { useLocalAudioPlayer } from "@/hooks/useLocalAudioPlayer";
+import { useLocalAudioPlayer, useLocalAudioPlayerProgress } from "@/hooks/useLocalAudioPlayer";
 import { GetDownloadQueue, ClearCompletedDownloads, ClearAllDownloads, ExportFailedDownloads, GetAudioPlaybackURL } from "../../wailsjs/go/main/App";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import { backend } from "../../wailsjs/go/models";
@@ -48,9 +48,10 @@ export function DownloadQueue({ isOpen, onClose }: DownloadQueueProps) {
         subtitle: [item.artist_name, item.album_name].filter(Boolean).join(" • "),
         filePath: item.file_path,
     })), [queueInfo.queue]);
-    const { currentTrack, currentTrackId, currentTime, duration, isPlaying, loadingTrackId, playNext, playPrevious, setTrackList, stopPlayback, toggleTrack, } = useLocalAudioPlayer({
+    const { currentTrack, currentTrackId, isPlaying, loadingTrackId, playNext, playPrevious, progressStore, setTrackList, stopPlayback, toggleTrack, } = useLocalAudioPlayer({
         resolveSource: GetAudioPlaybackURL,
     });
+    const { currentTime, duration } = useLocalAudioPlayerProgress(progressStore);
     useEffect(() => {
         setTrackList(playableTracks);
     }, [playableTracks, setTrackList]);

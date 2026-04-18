@@ -88,7 +88,7 @@ export function Sidebar({ currentPage, onPageChange, onNavigateHome }: SidebarPr
                 <Tooltip delayDuration={0}>
                     <TooltipTrigger asChild>
                         <Button variant={currentPage === "debug" ? "secondary" : "ghost"} size="icon" className={`h-10 w-10 ${currentPage === "debug" ? "bg-primary/10 text-primary hover:bg-primary/20" : "hover:bg-primary/10 hover:text-primary"}`} onClick={() => onPageChange("debug")}>
-                            <TerminalIcon size={20} loop={true}/>
+                            <TerminalIcon size={20}/>
                         </Button>
                     </TooltipTrigger>
                     <TooltipContent side="right">
@@ -101,7 +101,7 @@ export function Sidebar({ currentPage, onPageChange, onNavigateHome }: SidebarPr
                         <DropdownMenuTrigger asChild>
                             <TooltipTrigger asChild>
                                 <Button variant={["audio-analysis", "audio-converter", "audio-resampler", "file-manager"].includes(currentPage) ? "secondary" : "ghost"} size="icon" className={`h-10 w-10 ${["audio-analysis", "audio-converter", "audio-resampler", "file-manager"].includes(currentPage) ? "bg-primary/10 text-primary hover:bg-primary/20" : "hover:bg-primary/10 hover:text-primary"}`}>
-                                    <BlocksIcon size={20} loop={true}/>
+                                    <BlocksIcon size={20}/>
                                 </Button>
                             </TooltipTrigger>
                         </DropdownMenuTrigger>
@@ -189,7 +189,7 @@ export function Sidebar({ currentPage, onPageChange, onNavigateHome }: SidebarPr
                 <Tooltip delayDuration={0}>
                     <TooltipTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-10 w-10 hover:bg-primary/10 hover:text-primary" onClick={() => openExternal("https://ko-fi.com/afkarxyz")}>
-                            <CoffeeIcon size={20} loop={true}/>
+                            <CoffeeIcon size={20}/>
                         </Button>
                     </TooltipTrigger>
                     <TooltipContent side="right">

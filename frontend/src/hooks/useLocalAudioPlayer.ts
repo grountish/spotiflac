@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 
 export interface LocalAudioTrack {
@@ -13,6 +13,18 @@ interface UseLocalAudioPlayerOptions {
     resolveSource: (filePath: string) => Promise<string>;
 }
 
+export interface PlaybackProgressSnapshot {
+    currentTime: number;
+    duration: number;
+}
+
+export interface LocalAudioPlayerProgressStore {
+    getSnapshot: () => PlaybackProgressSnapshot;
+    subscribe: (listener: () => void) => () => void;
+}
+
+const PROGRESS_EMIT_INTERVAL_MS = 500;
+
 function disposeAudio(audio: HTMLAudioElement | null) {
     if (!audio) {
         return;
@@ -25,7 +37,8 @@ function disposeAudio(audio: HTMLAudioElement | null) {
     audio.onpause = null;
     audio.onended = null;
     audio.onerror = null;
-    audio.src = "";
+    audio.removeAttribute("src");
+    audio.load();
 }
 
 export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOptions) {
@@ -33,13 +46,33 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
     const [currentTrackId, setCurrentTrackId] = useState<string | null>(null);
     const [loadingTrackId, setLoadingTrackId] = useState<string | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [currentTime, setCurrentTime] = useState(0);
-    const [duration, setDuration] = useState(0);
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const currentTrackIdRef = useRef<string | null>(null);
     const tracksRef = useRef<LocalAudioTrack[]>(tracks);
     const requestTokenRef = useRef(0);
+    const lastProgressEmitAtRef = useRef(0);
+    const progressRef = useRef<PlaybackProgressSnapshot>({
+        currentTime: 0,
+        duration: 0,
+    });
+    const progressListenersRef = useRef(new Set<() => void>());
+
+    const emitProgress = useCallback(() => {
+        for (const listener of progressListenersRef.current) {
+            listener();
+        }
+    }, []);
+
+    const updateProgress = useCallback((nextProgress: PlaybackProgressSnapshot, force = false) => {
+        const current = progressRef.current;
+        if (!force && current.currentTime === nextProgress.currentTime && current.duration === nextProgress.duration) {
+            return;
+        }
+
+        progressRef.current = nextProgress;
+        emitProgress();
+    }, [emitProgress]);
 
     const stopPlayback = useCallback(() => {
         requestTokenRef.current += 1;
@@ -49,9 +82,12 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
         setCurrentTrackId(null);
         setLoadingTrackId(null);
         setIsPlaying(false);
-        setCurrentTime(0);
-        setDuration(0);
-    }, []);
+        lastProgressEmitAtRef.current = 0;
+        updateProgress({
+            currentTime: 0,
+            duration: 0,
+        }, true);
+    }, [updateProgress]);
 
     const setTrackList = useCallback((nextTracks: LocalAudioTrack[]) => {
         tracksRef.current = nextTracks;
@@ -76,8 +112,11 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
         currentTrackIdRef.current = nextTrack.id;
         setCurrentTrackId(nextTrack.id);
         setIsPlaying(false);
-        setCurrentTime(0);
-        setDuration(0);
+        lastProgressEmitAtRef.current = 0;
+        updateProgress({
+            currentTime: 0,
+            duration: 0,
+        }, true);
 
         try {
             const src = await resolveSource(nextTrack.filePath);
@@ -85,19 +124,29 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
                 return;
             }
 
-            const audio = new Audio(src);
-            audio.preload = "metadata";
+            const audio = audioRef.current ?? new Audio();
+            audio.preload = "none";
+            audio.src = src;
             audioRef.current = audio;
 
             audio.onloadedmetadata = () => {
-                setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
+                updateProgress({
+                    currentTime: audio.currentTime || 0,
+                    duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+                }, true);
             };
 
             audio.ontimeupdate = () => {
-                setCurrentTime(audio.currentTime || 0);
-                if (Number.isFinite(audio.duration)) {
-                    setDuration(audio.duration);
+                const now = Date.now();
+                if (now - lastProgressEmitAtRef.current < PROGRESS_EMIT_INTERVAL_MS) {
+                    return;
                 }
+
+                lastProgressEmitAtRef.current = now;
+                updateProgress({
+                    currentTime: audio.currentTime || 0,
+                    duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+                });
             };
 
             audio.onplay = () => {
@@ -200,11 +249,12 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
 
         const boundedTime = Math.min(Math.max(nextTime, 0), Number.isFinite(audio.duration) ? audio.duration : nextTime);
         audio.currentTime = boundedTime;
-        setCurrentTime(boundedTime);
-        if (Number.isFinite(audio.duration)) {
-            setDuration(audio.duration);
-        }
-    }, []);
+        lastProgressEmitAtRef.current = Date.now();
+        updateProgress({
+            currentTime: boundedTime,
+            duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+        }, true);
+    }, [updateProgress]);
 
     useEffect(() => {
         return () => {
@@ -222,19 +272,36 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
         return tracks.find((track) => track.id === currentTrackId) ?? null;
     }, [currentTrackId, tracks]);
 
+    const progressStore = useMemo<LocalAudioPlayerProgressStore>(() => ({
+        getSnapshot: () => progressRef.current,
+        subscribe: (listener) => {
+            progressListenersRef.current.add(listener);
+            return () => {
+                progressListenersRef.current.delete(listener);
+            };
+        },
+    }), []);
+
     return {
         currentTrack,
         currentTrackId,
-        currentTime,
-        duration,
         isPlaying,
         loadingTrackId,
         playNext,
         playPrevious,
+        progressStore,
         seekTo,
         setTrackList,
         stopPlayback,
         tracks,
         toggleTrack,
     };
+}
+
+export function useLocalAudioPlayerProgress(progressStore: LocalAudioPlayerProgressStore) {
+    return useSyncExternalStore(
+        progressStore.subscribe,
+        progressStore.getSnapshot,
+        progressStore.getSnapshot,
+    );
 }

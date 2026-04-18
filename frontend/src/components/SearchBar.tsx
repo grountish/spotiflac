@@ -10,7 +10,6 @@ import type { HistoryItem } from "@/components/FetchHistory";
 import { SearchSpotify, SearchSpotifyByType } from "../../wailsjs/go/main/App";
 import { backend } from "../../wailsjs/go/models";
 import { cn } from "@/lib/utils";
-import { useTypingEffect } from "@/hooks/useTypingEffect";
 import { getSettings, type Settings } from "@/lib/settings";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, } from "@/components/ui/dialog";
@@ -294,8 +293,7 @@ export function SearchBar({
     const [showInvalidUrlDialog, setShowInvalidUrlDialog] = useState(false);
     const [invalidUrl, setInvalidUrl] = useState("");
     const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const placeholders = searchMode ? SEARCH_PLACEHOLDERS : FETCH_PLACEHOLDERS;
-    const placeholderText = useTypingEffect(placeholders);
+    const placeholderText = searchMode ? SEARCH_PLACEHOLDERS[0] : FETCH_PLACEHOLDERS[0];
     useEffect(() => {
         try {
             const saved = localStorage.getItem(RECENT_SEARCHES_KEY);
