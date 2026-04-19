@@ -49,6 +49,7 @@ type soulseekConfig struct {
 	APIKey         string
 	DownloadPath   string
 	SearchTimeout  int
+	AllowLossy     bool
 }
 
 type SoulseekConnectionTestResult struct {
@@ -180,6 +181,7 @@ func LoadSoulseekConfig() (soulseekConfig, error) {
 		APIKey:        getStringSetting(settings, "soulseekApiKey"),
 		DownloadPath:  NormalizePath(getStringSetting(settings, "soulseekDownloadPath")),
 		SearchTimeout: getIntSetting(settings, "soulseekSearchTimeout", 20),
+		AllowLossy:    getBoolSetting(settings, "allowLossyFallback", false),
 	}
 
 	if config.SearchTimeout < 5 {
@@ -205,7 +207,7 @@ func DownloadTrackViaSoulseek(req SoulseekDownloadRequest) (string, error) {
 	}
 
 	client := NewSlskdClient(config)
-	candidate, err := client.findBestCandidate(req, config.SearchTimeout)
+	candidate, err := client.findBestCandidate(req, config.SearchTimeout, config.AllowLossy)
 	if err != nil {
 		return "", err
 	}
@@ -299,7 +301,7 @@ func TestSoulseekConnection(baseURL, apiKey, downloadPath string) (SoulseekConne
 	return result, nil
 }
 
-func (c *slskdClient) findBestCandidate(req SoulseekDownloadRequest, searchTimeout int) (soulseekCandidate, error) {
+func (c *slskdClient) findBestCandidate(req SoulseekDownloadRequest, searchTimeout int, allowLossy bool) (soulseekCandidate, error) {
 	queries := buildSoulseekQueries(req)
 	var best soulseekCandidate
 	found := false
@@ -315,7 +317,7 @@ func (c *slskdClient) findBestCandidate(req SoulseekDownloadRequest, searchTimeo
 			return soulseekCandidate{}, err
 		}
 
-		candidate, ok := scoreSoulseekSearch(search, req)
+		candidate, ok := scoreSoulseekSearch(search, req, allowLossy)
 		if !ok {
 			continue
 		}
@@ -327,7 +329,7 @@ func (c *slskdClient) findBestCandidate(req SoulseekDownloadRequest, searchTimeo
 	}
 
 	if !found {
-		return soulseekCandidate{}, fmt.Errorf("soulseek fallback did not find a suitable FLAC match")
+		return soulseekCandidate{}, fmt.Errorf("soulseek fallback did not find a suitable audio match")
 	}
 
 	return best, nil
@@ -454,7 +456,7 @@ func (c *slskdClient) doJSON(method, path string, payload any, out any) error {
 	return nil
 }
 
-func scoreSoulseekSearch(search slskdSearch, req SoulseekDownloadRequest) (soulseekCandidate, bool) {
+func scoreSoulseekSearch(search slskdSearch, req SoulseekDownloadRequest, allowLossy bool) (soulseekCandidate, bool) {
 	var best soulseekCandidate
 	found := false
 
@@ -464,23 +466,23 @@ func scoreSoulseekSearch(search slskdSearch, req SoulseekDownloadRequest) (souls
 
 	for _, response := range search.Responses {
 		for _, file := range response.Files {
-			if file.IsLocked || !strings.EqualFold(strings.TrimPrefix(file.Extension, "."), "flac") {
+			if file.IsLocked {
+				continue
+			}
+
+			extension := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(file.Extension), "."))
+			extensionScore, accepted := soulseekExtensionScore(extension, file, allowLossy)
+			if !accepted {
 				continue
 			}
 
 			normalizedName := normalizeSoulseekText(file.Filename)
 			score := 0
+			score += extensionScore
 
 			score += tokenMatchScore(normalizedName, trackTokens, 25)
 			score += tokenMatchScore(normalizedName, artistTokens, 18)
 			score += tokenMatchScore(normalizedName, albumTokens, 6)
-
-			if file.BitDepth != nil {
-				score += minInt(*file.BitDepth, 24)
-			}
-			if file.SampleRate != nil {
-				score += minInt(*file.SampleRate/1000, 192)
-			}
 			if response.HasFreeUploadSlot {
 				score += 12
 			}
@@ -598,7 +600,7 @@ func locateSoulseekDownload(downloadRoot, remoteFilename string, size int64, ear
 }
 
 func moveSoulseekDownloadIntoPlace(sourcePath string, req SoulseekDownloadRequest) (string, error) {
-	expectedFilename := BuildExpectedFilename(
+	expectedFilenameBase := BuildExpectedFilenameBase(
 		req.TrackName,
 		req.ArtistName,
 		req.AlbumName,
@@ -613,7 +615,11 @@ func moveSoulseekDownloadIntoPlace(sourcePath string, req SoulseekDownloadReques
 		req.UseAlbumTrackNumber,
 		req.ISRC,
 	)
-	targetPath := filepath.Join(req.OutputDir, expectedFilename)
+	targetExt := strings.ToLower(filepath.Ext(sourcePath))
+	if targetExt == "" {
+		targetExt = ".flac"
+	}
+	targetPath := filepath.Join(req.OutputDir, expectedFilenameBase+targetExt)
 
 	resolvedPath, alreadyExists := ResolveOutputPathForDownload(targetPath, GetRedownloadWithSuffixSetting())
 	if alreadyExists {
@@ -639,7 +645,9 @@ func moveSoulseekDownloadIntoPlace(sourcePath string, req SoulseekDownloadReques
 }
 
 func applySoulseekMetadata(filePath string, req SoulseekDownloadRequest) error {
-	if !strings.EqualFold(filepath.Ext(filePath), ".flac") {
+	switch strings.ToLower(filepath.Ext(filePath)) {
+	case ".flac", ".mp3", ".m4a":
+	default:
 		return nil
 	}
 
@@ -687,7 +695,7 @@ func applySoulseekMetadata(filePath string, req SoulseekDownloadRequest) error {
 		ISRC:        req.ISRC,
 	}
 
-	if err := EmbedMetadata(filePath, metadata, coverPath); err != nil {
+	if err := EmbedMetadataToConvertedFile(filePath, metadata, coverPath); err != nil {
 		return fmt.Errorf("failed to embed metadata into Soulseek fallback file: %w", err)
 	}
 
@@ -853,6 +861,49 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func soulseekExtensionScore(extension string, file slskdSearchFile, allowLossy bool) (int, bool) {
+	switch extension {
+	case "flac":
+		score := 48
+		if file.BitDepth != nil {
+			score += minInt(*file.BitDepth, 24)
+		}
+		if file.SampleRate != nil {
+			score += minInt(*file.SampleRate/1000, 192)
+		}
+		return score, true
+	case "m4a":
+		if !allowLossy {
+			return 0, false
+		}
+		score := 18
+		if file.BitRate != nil {
+			score += minInt(*file.BitRate/24, 16)
+		}
+		return score, true
+	case "aac":
+		if !allowLossy {
+			return 0, false
+		}
+		score := 14
+		if file.BitRate != nil {
+			score += minInt(*file.BitRate/24, 14)
+		}
+		return score, true
+	case "mp3":
+		if !allowLossy {
+			return 0, false
+		}
+		score := 12
+		if file.BitRate != nil {
+			score += minInt(*file.BitRate/16, 20)
+		}
+		return score, true
+	default:
+		return 0, false
+	}
 }
 
 func absInt(value int) int {

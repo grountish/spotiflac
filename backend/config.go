@@ -60,6 +60,16 @@ func GetRedownloadWithSuffixSetting() bool {
 	return enabled
 }
 
+func GetAllowLossyFallbackSetting() bool {
+	settings, err := LoadConfigSettings()
+	if err != nil || settings == nil {
+		return false
+	}
+
+	enabled, _ := settings["allowLossyFallback"].(bool)
+	return enabled
+}
+
 func GetLinkResolverSetting() string {
 	settings, err := LoadConfigSettings()
 	if err != nil || settings == nil {

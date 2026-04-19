@@ -72,13 +72,51 @@ func buildFormattedFilenameBase(trackName, artistName, albumName, albumArtist, r
 	return filename
 }
 
-func BuildExpectedFilename(trackName, artistName, albumName, albumArtist, releaseDate, filenameFormat, playlistName, playlistOwner string, includeTrackNumber bool, position, discNumber int, useAlbumTrackNumber bool, extra ...string) string {
+func BuildExpectedFilenameBase(trackName, artistName, albumName, albumArtist, releaseDate, filenameFormat, playlistName, playlistOwner string, includeTrackNumber bool, position, discNumber int, useAlbumTrackNumber bool, extra ...string) string {
 	isrc := ""
 	if len(extra) > 0 {
 		isrc = extra[0]
 	}
 
-	return buildFormattedFilenameBase(trackName, artistName, albumName, albumArtist, releaseDate, filenameFormat, playlistName, playlistOwner, isrc, includeTrackNumber, position, discNumber, useAlbumTrackNumber) + ".flac"
+	return buildFormattedFilenameBase(trackName, artistName, albumName, albumArtist, releaseDate, filenameFormat, playlistName, playlistOwner, isrc, includeTrackNumber, position, discNumber, useAlbumTrackNumber)
+}
+
+func BuildExpectedFilename(trackName, artistName, albumName, albumArtist, releaseDate, filenameFormat, playlistName, playlistOwner string, includeTrackNumber bool, position, discNumber int, useAlbumTrackNumber bool, extra ...string) string {
+	return BuildExpectedFilenameBase(trackName, artistName, albumName, albumArtist, releaseDate, filenameFormat, playlistName, playlistOwner, includeTrackNumber, position, discNumber, useAlbumTrackNumber, extra...) + ".flac"
+}
+
+func AudioExtensionsForFormat(audioFormat string) []string {
+	switch strings.ToLower(strings.TrimSpace(audioFormat)) {
+	case "any", "best_available":
+		return []string{".flac", ".mp3", ".m4a", ".aac"}
+	case "mp3":
+		return []string{".mp3"}
+	case "m4a":
+		return []string{".m4a", ".aac"}
+	case "aac":
+		return []string{".aac", ".m4a"}
+	case "original":
+		return []string{".flac", ".m4a", ".aac"}
+	case "flac", "lossless", "hi_res_lossless", "hi_res", "6", "7", "27", "":
+		return []string{".flac"}
+	default:
+		return []string{".flac"}
+	}
+}
+
+func FindExistingAudioFile(targetDir, filenameBase, audioFormat string, minSize int64) (string, bool) {
+	for _, ext := range AudioExtensionsForFormat(audioFormat) {
+		candidate := filepath.Join(targetDir, filenameBase+ext)
+		info, err := os.Stat(candidate)
+		if err != nil {
+			continue
+		}
+		if info.Size() > minSize {
+			return candidate, true
+		}
+	}
+
+	return "", false
 }
 
 func ResolveOutputPathForDownload(path string, redownloadWithSuffix bool) (string, bool) {

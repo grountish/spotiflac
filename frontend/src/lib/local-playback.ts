@@ -1,9 +1,10 @@
-import { CheckFilesExistence } from "../../wailsjs/go/main/App";
+import { CheckFilesExistence, ListAudioFilesInDir, ReadFileMetadata } from "../../wailsjs/go/main/App";
+import { backend } from "../../wailsjs/go/models";
 import { buildPlaylistFolderName } from "@/lib/playlist";
 import { getSettings } from "@/lib/settings";
 import { getFirstArtist, joinPath, sanitizePath } from "@/lib/utils";
 import type { LocalAudioTrack } from "@/hooks/useLocalAudioPlayer";
-import type { SpotifyMetadataResponse, TrackMetadata } from "@/types/api";
+import type { DownloadedFolderSummary, SpotifyMetadataResponse, TrackMetadata } from "@/types/api";
 
 export interface LocalCollectionPlaybackTarget {
     imageUrl?: string;
@@ -92,7 +93,7 @@ export async function resolveLocalTrackPaths({
         use_album_track_number: useAlbumTrackNumber,
         filename_format: settings.filenameTemplate || "",
         include_track_number: settings.trackNumber || false,
-        audio_format: "flac",
+        audio_format: "any",
     }));
 
     const results = await CheckFilesExistence(outputDir, rootDir, requests) as LocalTrackFileResult[];
@@ -173,5 +174,48 @@ export async function buildLocalCollectionPlaybackTargetFromMetadata(data: Spoti
         subtitle: descriptor.subtitle,
         title: descriptor.title,
         tracks: buildPlayableTracks(descriptor.tracks, localTrackPaths),
+    };
+}
+
+export async function buildLocalCollectionPlaybackTargetFromFolder(folder: DownloadedFolderSummary): Promise<LocalCollectionPlaybackTarget | null> {
+    const files = await ListAudioFilesInDir(folder.folder_path) as backend.FileInfo[];
+    if (!files.length) {
+        return null;
+    }
+
+    const withMetadata = await Promise.all(files.map(async (file) => {
+        try {
+            const metadata = await ReadFileMetadata(file.path) as backend.AudioMetadata;
+            return { file, metadata };
+        }
+        catch (error) {
+            console.error("Failed to read local track metadata:", error);
+            return { file, metadata: null };
+        }
+    }));
+
+    const tracks = withMetadata.map(({ file, metadata }) => ({
+        id: file.path,
+        title: metadata?.title || file.name.replace(/\.[^.]+$/, ""),
+        subtitle: [metadata?.artist, metadata?.album].filter(Boolean).join(" • ") || folder.subtitle,
+        imageUrl: folder.image,
+        filePath: file.path,
+        discNumber: metadata?.disc_number || 0,
+        trackNumber: metadata?.track_number || 0,
+    }));
+
+    tracks.sort((a, b) =>
+        a.discNumber - b.discNumber
+        || a.trackNumber - b.trackNumber
+        || a.title.localeCompare(b.title)
+        || a.filePath.localeCompare(b.filePath),
+    );
+
+    return {
+        imageUrl: folder.image,
+        key: `local-folder:${folder.folder_path}`,
+        subtitle: folder.subtitle,
+        title: folder.title,
+        tracks: tracks.map(({ discNumber: _discNumber, trackNumber: _trackNumber, ...track }) => track),
     };
 }

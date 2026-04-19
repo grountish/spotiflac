@@ -281,6 +281,19 @@ export interface AvatarDownloadResponse {
     error?: string;
     already_exists?: boolean;
 }
+export interface DownloadedFolderSummary {
+    title: string;
+    subtitle: string;
+    kind: "album" | "playlist";
+    folder_name: string;
+    relative_path: string;
+    folder_path: string;
+    image?: string;
+    track_count: number;
+    album_count: number;
+    artist_count: number;
+    latest_modified: number;
+}
 export interface AudioMetadata {
     title: string;
     artist: string;

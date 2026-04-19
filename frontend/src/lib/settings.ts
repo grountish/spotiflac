@@ -28,6 +28,7 @@ export interface Settings {
     autoOrder: "tidal-qobuz-amazon" | "tidal-amazon-qobuz" | "qobuz-tidal-amazon" | "qobuz-amazon-tidal" | "amazon-tidal-qobuz" | "amazon-qobuz-tidal" | string;
     autoQuality: "16" | "24";
     allowFallback: boolean;
+    allowLossyFallback: boolean;
     createPlaylistFolder: boolean;
     playlistOwnerFolderName: boolean;
     createM3u8File: boolean;
@@ -121,6 +122,7 @@ export const DEFAULT_SETTINGS: Settings = {
     autoOrder: "tidal-qobuz-amazon",
     autoQuality: "16",
     allowFallback: true,
+    allowLossyFallback: false,
     createPlaylistFolder: true,
     playlistOwnerFolderName: false,
     createM3u8File: false,
@@ -240,6 +242,9 @@ function getSettingsFromLocalStorage(): Settings {
             if (!('allowFallback' in parsed)) {
                 parsed.allowFallback = true;
             }
+            if (!('allowLossyFallback' in parsed)) {
+                parsed.allowLossyFallback = false;
+            }
             if (!('linkResolver' in parsed)) {
                 parsed.linkResolver = "songlink";
             }
@@ -345,6 +350,9 @@ export async function loadSettings(): Promise<Settings> {
             }
             if (!('allowFallback' in parsed)) {
                 parsed.allowFallback = true;
+            }
+            if (!('allowLossyFallback' in parsed)) {
+                parsed.allowLossyFallback = false;
             }
             if (!('linkResolver' in parsed)) {
                 parsed.linkResolver = "songlink";

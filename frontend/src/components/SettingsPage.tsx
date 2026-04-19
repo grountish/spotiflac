@@ -515,7 +515,7 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest, }: Settin
                 </div>
 
                 {((tempSettings.downloader === "tidal" &&
-                tempSettings.tidalQuality === "HI_RES_LOSSLESS") ||
+                    tempSettings.tidalQuality === "HI_RES_LOSSLESS") ||
                 (tempSettings.downloader === "qobuz" &&
                     tempSettings.qobuzQuality === "27") ||
                 (tempSettings.downloader === "auto" &&
@@ -530,6 +530,21 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest, }: Settin
                       </Label>
                     </div>
                   </div>)}
+
+                <div className="flex items-center gap-3 pt-2">
+                  <div className="flex items-center gap-3">
+                    <Switch id="allow-lossy-fallback" checked={tempSettings.allowLossyFallback} onCheckedChange={(checked) => setTempSettings((prev) => ({
+                    ...prev,
+                    allowLossyFallback: checked,
+                }))}/>
+                    <Label htmlFor="allow-lossy-fallback" className="text-sm font-normal cursor-pointer">
+                      Allow MP3/M4A as ultimate fallback
+                    </Label>
+                  </div>
+                </div>
+                {tempSettings.allowLossyFallback && (<p className="text-xs text-muted-foreground">
+                    If lossless download attempts fail, keep a playable MP3/M4A/AAC result instead of failing.
+                  </p>)}
 
                 {tempSettings.downloader === "auto" && (<div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-4">
                     <div className="flex items-center justify-between gap-4">

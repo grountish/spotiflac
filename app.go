@@ -737,12 +737,10 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 	}
 
 	if req.TrackName != "" && req.ArtistName != "" {
-		expectedFilename := backend.BuildExpectedFilename(req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, req.FilenameFormat, req.PlaylistName, req.PlaylistOwner, req.TrackNumber, req.Position, req.SpotifyDiscNumber, req.UseAlbumTrackNumber, req.ISRC)
-		expectedPath := filepath.Join(req.OutputDir, expectedFilename)
+		expectedFilenameBase := backend.BuildExpectedFilenameBase(req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, req.FilenameFormat, req.PlaylistName, req.PlaylistOwner, req.TrackNumber, req.Position, req.SpotifyDiscNumber, req.UseAlbumTrackNumber, req.ISRC)
 
 		if !backend.GetRedownloadWithSuffixSetting() {
-			if fileInfo, err := os.Stat(expectedPath); err == nil && fileInfo.Size() > 100*1024 {
-
+			if expectedPath, exists := backend.FindExistingAudioFile(req.OutputDir, expectedFilenameBase, "any", 100*1024); exists {
 				backend.SkipDownloadItem(itemID, expectedPath)
 				return DownloadResponse{
 					Success:       true,
@@ -1893,7 +1891,8 @@ func (a *App) CheckFilesExistence(outputDir string, rootDir string, tracks []Che
 					return nil
 				}
 				if !info.IsDir() {
-					if strings.EqualFold(filepath.Ext(path), ".flac") || strings.EqualFold(filepath.Ext(path), ".mp3") {
+					switch strings.ToLower(filepath.Ext(path)) {
+					case ".flac", ".mp3", ".m4a", ".aac":
 						rootDirFiles[info.Name()] = path
 					}
 				}
@@ -1932,12 +1931,7 @@ func (a *App) CheckFilesExistence(outputDir string, rootDir string, tracks []Che
 				trackNumber = t.TrackNumber
 			}
 
-			fileExt := ".flac"
-			if t.AudioFormat == "mp3" {
-				fileExt = ".mp3"
-			}
-
-			expectedFilenameBase := backend.BuildExpectedFilename(
+			expectedFilenameBase := backend.BuildExpectedFilenameBase(
 				t.TrackName,
 				t.ArtistName,
 				t.AlbumName,
@@ -1952,25 +1946,24 @@ func (a *App) CheckFilesExistence(outputDir string, rootDir string, tracks []Che
 				t.UseAlbumTrackNumber,
 				isrc,
 			)
-
-			expectedFilename := strings.TrimSuffix(expectedFilenameBase, ".flac") + fileExt
+			audioExtensions := backend.AudioExtensionsForFormat(t.AudioFormat)
+			primaryExtension := audioExtensions[0]
 
 			targetDir := outputDir
 			if t.RelativePath != "" {
 				targetDir = filepath.Join(outputDir, t.RelativePath)
 			}
 
-			expectedPath := filepath.Join(targetDir, expectedFilename)
 			if redownloadWithSuffix {
+				expectedPath := filepath.Join(targetDir, expectedFilenameBase+primaryExtension)
 				expectedPath, _ = backend.ResolveOutputPathForDownload(expectedPath, true)
 				res.FilePath = filepath.Base(expectedPath)
 			} else {
-				if fileInfo, err := os.Stat(expectedPath); err == nil && fileInfo.Size() > 100*1024 {
+				if existingPath, exists := backend.FindExistingAudioFile(targetDir, expectedFilenameBase, t.AudioFormat, 100*1024); exists {
 					res.Exists = true
-					res.FilePath = expectedPath
+					res.FilePath = existingPath
 				} else {
-
-					res.FilePath = expectedFilename
+					res.FilePath = expectedFilenameBase
 				}
 			}
 
@@ -1993,13 +1986,15 @@ func (a *App) CheckFilesExistence(outputDir string, rootDir string, tracks []Che
 		filesMap := getRootDirFiles()
 		if len(filesMap) > 0 {
 			for _, idx := range missingIndices {
-
-				expectedFilename := results[idx].FilePath
-				baseName := filepath.Base(expectedFilename)
-				if path, ok := filesMap[baseName]; ok {
-					results[idx].Exists = true
-					results[idx].FilePath = path
-				} else {
+				filenameBase := filepath.Base(results[idx].FilePath)
+				for _, ext := range backend.AudioExtensionsForFormat(tracks[idx].AudioFormat) {
+					if path, ok := filesMap[filenameBase+ext]; ok {
+						results[idx].Exists = true
+						results[idx].FilePath = path
+						break
+					}
+				}
+				if !results[idx].Exists {
 					results[idx].FilePath = ""
 				}
 			}

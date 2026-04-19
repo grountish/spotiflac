@@ -17,9 +17,11 @@ import { PlaylistInfo } from "@/components/PlaylistInfo";
 import { ArtistInfo } from "@/components/ArtistInfo";
 import { DownloadQueue } from "@/components/DownloadQueue";
 import { DownloadProgressToast } from "@/components/DownloadProgressToast";
+import { DownloadedAlbumsCarousel } from "@/components/DownloadedAlbumsCarousel";
 import { SettingsPage } from "@/components/SettingsPage";
 import type { HistoryItem } from "@/components/FetchHistory";
 import { LocalPlayerSidebar } from "@/components/LocalPlayerSidebar";
+import { useDownloadedAlbums } from "@/hooks/useDownloadedAlbums";
 import { useDownload } from "@/hooks/useDownload";
 import { useLocalAudioPlayer } from "@/hooks/useLocalAudioPlayer";
 import { useMetadata } from "@/hooks/useMetadata";
@@ -30,8 +32,8 @@ import { ensureApiStatusCheckStarted } from "@/lib/api-status";
 import { useDownloadQueueDialog } from "@/hooks/useDownloadQueueDialog";
 import { useDownloadProgress } from "@/hooks/useDownloadProgress";
 import { buildPlaylistFolderName } from "@/lib/playlist";
-import { buildLocalCollectionPlaybackTargetFromMetadata, type LocalCollectionPlaybackTarget } from "@/lib/local-playback";
-import type { SpotifyMetadataResponse } from "@/types/api";
+import { buildLocalCollectionPlaybackTargetFromFolder, buildLocalCollectionPlaybackTargetFromMetadata, type LocalCollectionPlaybackTarget } from "@/lib/local-playback";
+import type { DownloadedFolderSummary, SpotifyMetadataResponse } from "@/types/api";
 const HISTORY_KEY = "spotiflac_fetch_history";
 const MAX_HISTORY = 5;
 interface CachedFetchHistoryItem {
@@ -87,6 +89,7 @@ function normalizeHistoryURL(url: string): string {
     }
     return withoutQuery.replace(/(\/artist\/[A-Za-z0-9]+)\/discography\/all$/i, "$1");
 }
+
 function getHistoryIdentityKey(type: HistoryItem["type"], url: string): string {
     const normalizedUrl = normalizeHistoryURL(url);
     const spotifyEntity = extractSpotifyEntityFromURL(normalizedUrl);
@@ -155,6 +158,7 @@ function App() {
     const lyrics = useLyrics();
     const cover = useCover();
     const availability = useAvailability();
+    const downloadedAlbums = useDownloadedAlbums();
     const downloadQueue = useDownloadQueueDialog();
     const localPlayer = useLocalAudioPlayer({
         resolveSource: GetAudioPlaybackURL,
@@ -586,6 +590,30 @@ function App() {
             toast.error(`Error opening folder: ${error}`);
         }
     };
+    const handleOpenDownloadedFolder = useCallback(async (folder: DownloadedFolderSummary) => {
+        try {
+            await OpenFolder(folder.folder_path);
+        }
+        catch (error) {
+            console.error("Failed to open downloaded folder:", error);
+            toast.error(`Failed to open ${folder.folder_name}`);
+        }
+    }, []);
+    const handlePlayDownloadedFolder = useCallback(async (folder: DownloadedFolderSummary) => {
+        try {
+            const target = await buildLocalCollectionPlaybackTargetFromFolder(folder);
+            if (!target || target.tracks.length === 0) {
+                toast.info("No playable tracks found in this folder");
+                return;
+            }
+
+            await activateLocalCollection(target);
+        }
+        catch (error) {
+            console.error("Failed to play downloaded folder:", error);
+            toast.error(`Failed to play ${folder.title}`);
+        }
+    }, [activateLocalCollection]);
     const renderMetadata = () => {
         if (!metadata.metadata)
             return null;
@@ -733,6 +761,17 @@ function App() {
                             setSpotifyUrl(updatedUrl);
                         }
                     }} history={fetchHistory} historyCheckingPlayableIds={historyPlayableCheckingIds} historyCurrentPlayableId={currentPlayableHistoryId} historyIsCurrentPlayablePlaying={localPlayer.isPlaying} historyPlayableIds={playableHistoryIds} onHistoryPlay={handleHistoryPlay} onHistoryResolvePlayable={(item) => { void resolveHistoryPlayableTarget(item); }} onHistorySelect={handleHistorySelect} onHistoryRemove={removeFromHistory} hasResult={!!metadata.metadata} searchMode={isSearchMode} onSearchModeChange={setIsSearchMode} region={region} onRegionChange={setRegion}/>
+
+                    {!isSearchMode && !metadata.metadata && (
+                        <DownloadedAlbumsCarousel
+                            albums={downloadedAlbums.albums}
+                            isLoading={downloadedAlbums.isLoading}
+                            activeCollectionKey={activeLocalCollection?.key ?? null}
+                            isCurrentCollectionPlaying={localPlayer.isPlaying}
+                            onPlay={(folder) => { void handlePlayDownloadedFolder(folder); }}
+                            onOpenFolder={(folder) => { void handleOpenDownloadedFolder(folder); }}
+                        />
+                    )}
 
                     {!isSearchMode && metadata.metadata && renderMetadata()}
                 </>);

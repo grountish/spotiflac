@@ -52,6 +52,13 @@ async function resolveTemplateISRC(settings: {
         return "";
     }
 }
+
+function getPreferredDownloadAudioFormat(settings: {
+    allowLossyFallback?: boolean;
+}) {
+    return settings.allowLossyFallback ? "any" : "flac";
+}
+
 export function useDownload(region: string) {
     const [downloadProgress, setDownloadProgress] = useState<number>(0);
     const [isDownloading, setIsDownloading] = useState(false);
@@ -114,7 +121,7 @@ export function useDownload(region: string) {
             embed_max_quality_cover: settings.embedMaxQualityCover,
             duration: request.durationSeconds,
             item_id: request.itemID,
-            audio_format: "flac",
+            audio_format: getPreferredDownloadAudioFormat(settings),
             spotify_track_number: request.spotifyTrackNumber,
             spotify_disc_number: request.spotifyDiscNumber,
             spotify_total_tracks: request.spotifyTotalTracks,
@@ -191,7 +198,7 @@ export function useDownload(region: string) {
                 }
             }
         }
-        const serviceForCheck = service === "auto" ? "flac" : (service === "tidal" ? "flac" : (service === "qobuz" ? "flac" : "flac"));
+        const serviceForCheck = getPreferredDownloadAudioFormat(settings);
         let fileExists = false;
         if (trackName && artistName) {
             try {
@@ -412,7 +419,7 @@ export function useDownload(region: string) {
             audioFormat = settings.qobuzQuality || "6";
         }
         else if (service === "deezer") {
-            audioFormat = "flac";
+            audioFormat = getPreferredDownloadAudioFormat(settings);
         }
         logger.debug(`trying ${service} for: ${trackName} - ${artistName}`);
         const singleServiceResponse = await downloadTrack({
@@ -844,7 +851,7 @@ export function useDownload(region: string) {
             .filter((t): t is TrackMetadata => t !== undefined);
         logger.info(`checking existing files in parallel...`);
         const useAlbumTrackNumber = settings.folderTemplate?.includes("{album}") || false;
-        const audioFormat = "flac";
+        const audioFormat = getPreferredDownloadAudioFormat(settings);
         const existenceChecks = selectedTrackObjects.map((track, index) => {
             const displayArtist = settings.useFirstArtistOnly && track.artists ? getFirstArtist(track.artists) : track.artists;
             const displayAlbumArtist = settings.useFirstArtistOnly && track.album_artist ? getFirstArtist(track.album_artist) : track.album_artist;
@@ -1016,7 +1023,7 @@ export function useDownload(region: string) {
         }
         logger.info(`checking existing files in parallel...`);
         const useAlbumTrackNumber = settings.folderTemplate?.includes("{album}") || false;
-        const audioFormat = "flac";
+        const audioFormat = getPreferredDownloadAudioFormat(settings);
         const existenceChecks = tracksWithId.map((track, index) => {
             const displayArtist = settings.useFirstArtistOnly && track.artists ? getFirstArtist(track.artists) : track.artists;
             const displayAlbumArtist = settings.useFirstArtistOnly && track.album_artist ? getFirstArtist(track.album_artist) : track.album_artist;
