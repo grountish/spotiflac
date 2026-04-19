@@ -1,4 +1,5 @@
 import { CheckFilesExistence, ListAudioFilesInDir, ReadFileMetadata } from "../../wailsjs/go/main/App";
+import { SearchSpotifyByType } from "../../wailsjs/go/main/App";
 import { backend } from "../../wailsjs/go/models";
 import { buildPlaylistFolderName } from "@/lib/playlist";
 import { getSettings } from "@/lib/settings";
@@ -44,6 +45,55 @@ interface LocalCollectionDescriptor {
     title: string;
     folderName?: string;
     tracks: TrackMetadata[];
+}
+
+interface SearchResult {
+    name: string;
+    artists?: string;
+    owner?: string;
+    external_urls: string;
+}
+
+function normalizeLookupText(value: string | undefined) {
+    return (value || "")
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .trim();
+}
+
+function scoreAlbumCandidate(result: SearchResult, albumName: string, artistName: string) {
+    let score = 0;
+    const normalizedAlbum = normalizeLookupText(albumName);
+    const normalizedArtist = normalizeLookupText(artistName);
+    const resultAlbum = normalizeLookupText(result.name);
+    const resultArtist = normalizeLookupText(result.artists);
+
+    if (resultAlbum === normalizedAlbum) {
+        score += 100;
+    } else if (resultAlbum.includes(normalizedAlbum) || normalizedAlbum.includes(resultAlbum)) {
+        score += 50;
+    }
+
+    if (normalizedArtist && resultArtist === normalizedArtist) {
+        score += 80;
+    } else if (normalizedArtist && (resultArtist.includes(normalizedArtist) || normalizedArtist.includes(resultArtist))) {
+        score += 35;
+    }
+
+    return score;
+}
+
+function scorePlaylistCandidate(result: SearchResult, playlistName: string) {
+    const normalizedPlaylist = normalizeLookupText(playlistName);
+    const resultName = normalizeLookupText(result.name);
+
+    if (resultName === normalizedPlaylist) {
+        return 100;
+    }
+    if (resultName.includes(normalizedPlaylist) || normalizedPlaylist.includes(resultName)) {
+        return 50;
+    }
+    return 0;
 }
 
 function buildOutputDir(folderName: string | undefined, isAlbum: boolean | undefined) {
@@ -218,4 +268,52 @@ export async function buildLocalCollectionPlaybackTargetFromFolder(folder: Downl
         title: folder.title,
         tracks: tracks.map(({ discNumber: _discNumber, trackNumber: _trackNumber, ...track }) => track),
     };
+}
+
+export async function resolveSpotifyUrlFromDownloadedFolder(folder: DownloadedFolderSummary): Promise<string | null> {
+    if (folder.kind === "album") {
+        const files = await ListAudioFilesInDir(folder.folder_path) as backend.FileInfo[];
+        for (const file of files) {
+            try {
+                const metadata = await ReadFileMetadata(file.path) as backend.AudioMetadata;
+                const albumName = metadata.album?.trim() || folder.title;
+                const artistName = metadata.album_artist?.trim() || metadata.artist?.trim() || folder.subtitle;
+                if (!albumName || !artistName) {
+                    continue;
+                }
+
+                const results = await SearchSpotifyByType({
+                    query: `${albumName} ${artistName}`.trim(),
+                    search_type: "album",
+                    limit: 5,
+                    offset: 0,
+                }) as SearchResult[];
+
+                const best = results
+                    .map((result) => ({ result, score: scoreAlbumCandidate(result, albumName, artistName) }))
+                    .sort((a, b) => b.score - a.score)[0];
+
+                if (best?.score > 0) {
+                    return best.result.external_urls;
+                }
+            } catch (error) {
+                console.error("Failed to resolve downloaded album metadata:", error);
+            }
+        }
+
+        return null;
+    }
+
+    const results = await SearchSpotifyByType({
+        query: folder.folder_name || folder.title,
+        search_type: "playlist",
+        limit: 5,
+        offset: 0,
+    }) as SearchResult[];
+
+    const best = results
+        .map((result) => ({ result, score: scorePlaylistCandidate(result, folder.folder_name || folder.title) }))
+        .sort((a, b) => b.score - a.score)[0];
+
+    return best?.score > 0 ? best.result.external_urls : null;
 }

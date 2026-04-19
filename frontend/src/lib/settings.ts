@@ -19,6 +19,8 @@ export interface Settings {
     albumSubfolder?: boolean;
     trackNumber: boolean;
     sfxEnabled: boolean;
+    enableCrossfade: boolean;
+    crossfadeDurationSeconds: number;
     embedLyrics: boolean;
     embedMaxQualityCover: boolean;
     operatingSystem: "Windows" | "linux/MacOS";
@@ -32,11 +34,6 @@ export interface Settings {
     createPlaylistFolder: boolean;
     playlistOwnerFolderName: boolean;
     createM3u8File: boolean;
-    enableSoulseekFallback: boolean;
-    soulseekURL: string;
-    soulseekApiKey: string;
-    soulseekDownloadPath: string;
-    soulseekSearchTimeout: number;
     useFirstArtistOnly: boolean;
     useSingleGenre: boolean;
     embedGenre: boolean;
@@ -113,6 +110,8 @@ export const DEFAULT_SETTINGS: Settings = {
     filenameTemplate: "{title} - {artist}",
     trackNumber: false,
     sfxEnabled: true,
+    enableCrossfade: false,
+    crossfadeDurationSeconds: 6,
     embedLyrics: false,
     embedMaxQualityCover: false,
     operatingSystem: detectOS(),
@@ -126,11 +125,6 @@ export const DEFAULT_SETTINGS: Settings = {
     createPlaylistFolder: true,
     playlistOwnerFolderName: false,
     createM3u8File: false,
-    enableSoulseekFallback: false,
-    soulseekURL: "",
-    soulseekApiKey: "",
-    soulseekDownloadPath: "",
-    soulseekSearchTimeout: 20,
     useFirstArtistOnly: false,
     useSingleGenre: false,
     embedGenre: false,
@@ -242,6 +236,12 @@ function getSettingsFromLocalStorage(): Settings {
             if (!('allowFallback' in parsed)) {
                 parsed.allowFallback = true;
             }
+            if (!('enableCrossfade' in parsed)) {
+                parsed.enableCrossfade = false;
+            }
+            if (!('crossfadeDurationSeconds' in parsed)) {
+                parsed.crossfadeDurationSeconds = 6;
+            }
             if (!('allowLossyFallback' in parsed)) {
                 parsed.allowLossyFallback = false;
             }
@@ -253,21 +253,6 @@ function getSettingsFromLocalStorage(): Settings {
             }
             if (!('playlistOwnerFolderName' in parsed)) {
                 parsed.playlistOwnerFolderName = false;
-            }
-            if (!('enableSoulseekFallback' in parsed)) {
-                parsed.enableSoulseekFallback = false;
-            }
-            if (!('soulseekURL' in parsed)) {
-                parsed.soulseekURL = "";
-            }
-            if (!('soulseekApiKey' in parsed)) {
-                parsed.soulseekApiKey = "";
-            }
-            if (!('soulseekDownloadPath' in parsed)) {
-                parsed.soulseekDownloadPath = "";
-            }
-            if (!('soulseekSearchTimeout' in parsed)) {
-                parsed.soulseekSearchTimeout = 20;
             }
             if (!('separator' in parsed)) {
                 parsed.separator = "semicolon";
@@ -351,6 +336,12 @@ export async function loadSettings(): Promise<Settings> {
             if (!('allowFallback' in parsed)) {
                 parsed.allowFallback = true;
             }
+            if (!('enableCrossfade' in parsed)) {
+                parsed.enableCrossfade = false;
+            }
+            if (!('crossfadeDurationSeconds' in parsed)) {
+                parsed.crossfadeDurationSeconds = 6;
+            }
             if (!('allowLossyFallback' in parsed)) {
                 parsed.allowLossyFallback = false;
             }
@@ -368,21 +359,6 @@ export async function loadSettings(): Promise<Settings> {
             }
             if (!('createM3u8File' in parsed)) {
                 parsed.createM3u8File = false;
-            }
-            if (!('enableSoulseekFallback' in parsed)) {
-                parsed.enableSoulseekFallback = false;
-            }
-            if (!('soulseekURL' in parsed)) {
-                parsed.soulseekURL = "";
-            }
-            if (!('soulseekApiKey' in parsed)) {
-                parsed.soulseekApiKey = "";
-            }
-            if (!('soulseekDownloadPath' in parsed)) {
-                parsed.soulseekDownloadPath = "";
-            }
-            if (!('soulseekSearchTimeout' in parsed)) {
-                parsed.soulseekSearchTimeout = 20;
             }
             if (!('useFirstArtistOnly' in parsed)) {
                 parsed.useFirstArtistOnly = false;

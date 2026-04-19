@@ -5,13 +5,12 @@ import { InputWithContext } from "@/components/ui/input-with-context";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger, } from "@/components/ui/tooltip";
-import { FolderOpen, Save, RotateCcw, Info, ArrowRight, MonitorCog, FolderCog, Router, FolderLock, CheckCircle2, AlertCircle } from "lucide-react";
+import { FolderOpen, Save, RotateCcw, Info, ArrowRight, MonitorCog, FolderCog, Router, FolderLock } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Spinner } from "@/components/ui/spinner";
 import { getSettings, getSettingsWithDefaults, saveSettings, resetToDefaultSettings, applyThemeMode, applyFont, FONT_OPTIONS, FOLDER_PRESETS, FILENAME_PRESETS, TEMPLATE_VARIABLES, type Settings as SettingsType, type FontFamily, type FolderPreset, type FilenamePreset, } from "@/lib/settings";
 import { themes, applyTheme } from "@/lib/themes";
-import { SelectFolder, OpenConfigFolder, TestSoulseekConnection } from "../../wailsjs/go/main/App";
+import { SelectFolder, OpenConfigFolder } from "../../wailsjs/go/main/App";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import { ApiStatusTab } from "./ApiStatusTab";
 import { AmazonIcon, QobuzIcon, SonglinkIcon, SongstatsIcon, TidalIcon } from "./PlatformIcons";
@@ -19,28 +18,11 @@ interface SettingsPageProps {
     onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void;
     onResetRequest?: (resetFn: () => void) => void;
 }
-interface SoulseekConnectionTestResult {
-    base_url: string;
-    authenticated: boolean;
-    server_connected: boolean;
-    server_state?: string;
-    server_address?: string;
-    logged_in_username?: string;
-    download_path: string;
-    download_path_exists: boolean;
-    download_path_is_dir: boolean;
-    shares_ready: boolean;
-    shared_directories: number;
-    shared_files: number;
-    message: string;
-}
 export function SettingsPage({ onUnsavedChangesChange, onResetRequest, }: SettingsPageProps) {
     const [savedSettings, setSavedSettings] = useState<SettingsType>(getSettings());
     const [tempSettings, setTempSettings] = useState<SettingsType>(savedSettings);
     const [isDark, setIsDark] = useState(document.documentElement.classList.contains("dark"));
     const [showResetConfirm, setShowResetConfirm] = useState(false);
-    const [isTestingSoulseek, setIsTestingSoulseek] = useState(false);
-    const [soulseekTestResult, setSoulseekTestResult] = useState<SoulseekConnectionTestResult | null>(null);
     const hasUnsavedChanges = JSON.stringify(savedSettings) !== JSON.stringify(tempSettings);
     const resetToSaved = useCallback(() => {
         const freshSavedSettings = getSettings();
@@ -117,18 +99,6 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest, }: Settin
             toast.error(`Error selecting folder: ${error}`);
         }
     };
-    const handleBrowseSoulseekFolder = async () => {
-        try {
-            const selectedPath = await SelectFolder(tempSettings.soulseekDownloadPath || tempSettings.downloadPath || "");
-            if (selectedPath && selectedPath.trim() !== "") {
-                setTempSettings((prev) => ({ ...prev, soulseekDownloadPath: selectedPath }));
-            }
-        }
-        catch (error) {
-            console.error("Error selecting Soulseek folder:", error);
-            toast.error(`Error selecting Soulseek folder: ${error}`);
-        }
-    };
     const handleTidalQualityChange = async (value: "LOSSLESS" | "HI_RES_LOSSLESS") => {
         setTempSettings((prev) => ({ ...prev, tidalQuality: value }));
     };
@@ -137,38 +107,6 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest, }: Settin
     };
     const handleAutoQualityChange = async (value: "16" | "24") => {
         setTempSettings((prev) => ({ ...prev, autoQuality: value }));
-    };
-    const handleTestSoulseekConnection = async () => {
-        setIsTestingSoulseek(true);
-        try {
-            const json = await TestSoulseekConnection(tempSettings.soulseekURL, tempSettings.soulseekApiKey, tempSettings.soulseekDownloadPath);
-            const result = JSON.parse(json) as SoulseekConnectionTestResult;
-            setSoulseekTestResult(result);
-            if (result.authenticated && result.server_connected && result.download_path_exists && result.download_path_is_dir) {
-                toast.success(result.message);
-            }
-            else {
-                toast.warning(result.message);
-            }
-        }
-        catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            if (typeof message === "string" && message.trim().startsWith("{")) {
-                try {
-                    const parsed = JSON.parse(message) as SoulseekConnectionTestResult;
-                    setSoulseekTestResult(parsed);
-                    toast.warning(parsed.message);
-                    return;
-                }
-                catch {
-                }
-            }
-            setSoulseekTestResult(null);
-            toast.error(`Soulseek test failed: ${message}`);
-        }
-        finally {
-            setIsTestingSoulseek(false);
-        }
     };
     const [activeTab, setActiveTab] = useState<"general" | "files" | "api">("general");
     return (<div className="space-y-4 h-full flex flex-col">
@@ -289,6 +227,40 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest, }: Settin
                   Sound Effects
                 </Label>
               </div>
+
+              <div className="flex items-center gap-3">
+                <Switch id="enable-crossfade" checked={tempSettings.enableCrossfade} onCheckedChange={(checked) => setTempSettings((prev) => ({
+                ...prev,
+                enableCrossfade: checked,
+            }))}/>
+                <Label htmlFor="enable-crossfade" className="cursor-pointer text-sm font-normal">
+                  Crossfade Between Local Tracks
+                </Label>
+              </div>
+
+              {tempSettings.enableCrossfade && (
+                <div className="space-y-2">
+                  <Label htmlFor="crossfade-duration">Crossfade Duration</Label>
+                  <Select value={String(tempSettings.crossfadeDurationSeconds)} onValueChange={(value) => setTempSettings((prev) => ({
+                ...prev,
+                crossfadeDurationSeconds: Number(value),
+            }))}>
+                    <SelectTrigger id="crossfade-duration">
+                      <SelectValue placeholder="Select duration"/>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="4">4 seconds</SelectItem>
+                      <SelectItem value="6">6 seconds</SelectItem>
+                      <SelectItem value="8">8 seconds</SelectItem>
+                      <SelectItem value="10">10 seconds</SelectItem>
+                      <SelectItem value="12">12 seconds</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Uses two local audio streams briefly near track transitions.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="space-y-4">
@@ -546,93 +518,6 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest, }: Settin
                     If lossless download attempts fail, keep a playable MP3/M4A/AAC result instead of failing.
                   </p>)}
 
-                {tempSettings.downloader === "auto" && (<div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="space-y-1">
-                        <div className="text-sm font-medium">Soulseek fallback</div>
-                        <p className="text-xs text-muted-foreground">
-                          Only used after the configured streaming sources fail.
-                        </p>
-                      </div>
-                      <Switch id="enable-soulseek-fallback" checked={tempSettings.enableSoulseekFallback} onCheckedChange={(checked) => setTempSettings((prev) => ({
-                    ...prev,
-                    enableSoulseekFallback: checked,
-                }))}/>
-                    </div>
-
-                    {tempSettings.enableSoulseekFallback && (<div className="grid gap-3 md:grid-cols-2">
-                        <div className="space-y-2 md:col-span-2">
-                          <Label htmlFor="soulseek-url">slskd URL</Label>
-                          <InputWithContext id="soulseek-url" value={tempSettings.soulseekURL} onValueChange={(value) => setTempSettings((prev) => ({
-                    ...prev,
-                    soulseekURL: value,
-                }))} placeholder="http://127.0.0.1:5030"/>
-                        </div>
-
-                        <div className="space-y-2 md:col-span-2">
-                          <Label htmlFor="soulseek-api-key">API Key</Label>
-                          <InputWithContext id="soulseek-api-key" type="password" value={tempSettings.soulseekApiKey} onValueChange={(value) => setTempSettings((prev) => ({
-                    ...prev,
-                    soulseekApiKey: value,
-                }))} placeholder="slskd API key"/>
-                        </div>
-
-                        <div className="space-y-2 md:col-span-2">
-                          <Label htmlFor="soulseek-download-path">Soulseek Download Folder</Label>
-                          <div className="flex gap-2">
-                            <InputWithContext id="soulseek-download-path" value={tempSettings.soulseekDownloadPath} onValueChange={(value) => setTempSettings((prev) => ({
-                    ...prev,
-                    soulseekDownloadPath: value,
-                }))} placeholder="/Users/you/Downloads/slskd"/>
-                            <Button type="button" variant="outline" size="icon" onClick={handleBrowseSoulseekFolder}>
-                              <FolderOpen className="h-4 w-4"/>
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="soulseek-timeout">Search Timeout (seconds)</Label>
-                          <InputWithContext id="soulseek-timeout" type="number" min={5} max={120} step={1} value={String(tempSettings.soulseekSearchTimeout)} onValueChange={(value) => setTempSettings((prev) => ({
-                    ...prev,
-                    soulseekSearchTimeout: Math.max(5, Math.min(120, Number.parseInt(value || "20", 10) || 20)),
-                }))}/>
-                        </div>
-
-                        <div className="space-y-2 flex items-end">
-                          <Button type="button" variant="secondary" onClick={handleTestSoulseekConnection} disabled={isTestingSoulseek}>
-                            {isTestingSoulseek ? <Spinner /> : <Router className="h-4 w-4"/>}
-                            Test slskd Connection
-                          </Button>
-                        </div>
-
-                        {soulseekTestResult && (<div className={`md:col-span-2 rounded-lg border p-3 text-sm ${soulseekTestResult.authenticated && soulseekTestResult.server_connected && soulseekTestResult.download_path_exists && soulseekTestResult.download_path_is_dir
-                    ? "border-emerald-500/40 bg-emerald-500/10"
-                    : "border-amber-500/40 bg-amber-500/10"}`}>
-                            <div className="flex items-start gap-2">
-                              {soulseekTestResult.authenticated && soulseekTestResult.server_connected && soulseekTestResult.download_path_exists && soulseekTestResult.download_path_is_dir
-                    ? <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
-                    : <AlertCircle className="mt-0.5 h-4 w-4 text-amber-500" />}
-                              <div className="space-y-1">
-                                <p className="font-medium">{soulseekTestResult.message}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  URL: {soulseekTestResult.base_url || "Not set"}
-                                  {soulseekTestResult.server_address ? ` • Server: ${soulseekTestResult.server_address}` : ""}
-                                  {soulseekTestResult.logged_in_username ? ` • User: ${soulseekTestResult.logged_in_username}` : ""}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  Soulseek: {soulseekTestResult.server_connected ? `Connected (${soulseekTestResult.server_state || "connected"})` : (soulseekTestResult.server_state || "Not connected")}
-                                  {" • "}
-                                  Downloads folder: {soulseekTestResult.download_path_exists
-                    ? (soulseekTestResult.download_path_is_dir ? "OK" : "Not a folder")
-                    : "Missing"}
-                                  {" • "}
-                                  Shares: {soulseekTestResult.shares_ready ? "Ready" : "Not ready"} ({soulseekTestResult.shared_directories} dirs / {soulseekTestResult.shared_files} files)
-                                </p>
-                              </div>
-                            </div>
-                          </div>)}
-                      </div>)}
-                  </div>)}
               </div>
 
               <div className="border-t pt-6"/>

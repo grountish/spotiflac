@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { getSettings, type Settings } from "@/lib/settings";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 
 export interface LocalAudioTrack {
@@ -24,6 +25,7 @@ export interface LocalAudioPlayerProgressStore {
 }
 
 const PROGRESS_EMIT_INTERVAL_MS = 500;
+const CROSSFADE_STEP_INTERVAL_MS = 100;
 
 function disposeAudio(audio: HTMLAudioElement | null) {
     if (!audio) {
@@ -48,10 +50,16 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
     const [isPlaying, setIsPlaying] = useState(false);
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const fadingAudioRef = useRef<HTMLAudioElement | null>(null);
     const currentTrackIdRef = useRef<string | null>(null);
     const tracksRef = useRef<LocalAudioTrack[]>(tracks);
     const requestTokenRef = useRef(0);
     const lastProgressEmitAtRef = useRef(0);
+    const startCrossfadeRef = useRef<() => void>(() => {});
+    const crossfadeIntervalRef = useRef<number | null>(null);
+    const isCrossfadingRef = useRef(false);
+    const crossfadeEnabledRef = useRef(false);
+    const crossfadeDurationSecondsRef = useRef(6);
     const progressRef = useRef<PlaybackProgressSnapshot>({
         currentTime: 0,
         duration: 0,
@@ -74,8 +82,32 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
         emitProgress();
     }, [emitProgress]);
 
+    const clearCrossfadeInterval = useCallback(() => {
+        if (crossfadeIntervalRef.current !== null) {
+            window.clearInterval(crossfadeIntervalRef.current);
+            crossfadeIntervalRef.current = null;
+        }
+    }, []);
+
+    const disposeFadingAudio = useCallback(() => {
+        clearCrossfadeInterval();
+        if (fadingAudioRef.current) {
+            disposeAudio(fadingAudioRef.current);
+            fadingAudioRef.current = null;
+        }
+        isCrossfadingRef.current = false;
+    }, [clearCrossfadeInterval]);
+
+    const applyCrossfadeSettings = useCallback((settings?: Partial<Settings>) => {
+        const resolvedSettings = settings ?? getSettings();
+        crossfadeEnabledRef.current = !!resolvedSettings.enableCrossfade;
+        const duration = Number(resolvedSettings.crossfadeDurationSeconds);
+        crossfadeDurationSecondsRef.current = Number.isFinite(duration) && duration > 0 ? duration : 6;
+    }, []);
+
     const stopPlayback = useCallback(() => {
         requestTokenRef.current += 1;
+        disposeFadingAudio();
         disposeAudio(audioRef.current);
         audioRef.current = null;
         currentTrackIdRef.current = null;
@@ -87,7 +119,7 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
             currentTime: 0,
             duration: 0,
         }, true);
-    }, [updateProgress]);
+    }, [disposeFadingAudio, updateProgress]);
 
     const setTrackList = useCallback((nextTracks: LocalAudioTrack[]) => {
         tracksRef.current = nextTracks;
@@ -98,6 +130,182 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
         }
     }, [stopPlayback]);
 
+    const bindActiveAudioHandlers = useCallback((audio: HTMLAudioElement, track: LocalAudioTrack, requestToken: number) => {
+        audio.onloadedmetadata = () => {
+            if (requestToken !== requestTokenRef.current || audio !== audioRef.current) {
+                return;
+            }
+
+            updateProgress({
+                currentTime: audio.currentTime || 0,
+                duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+            }, true);
+        };
+
+        audio.ontimeupdate = () => {
+            if (requestToken !== requestTokenRef.current || audio !== audioRef.current) {
+                return;
+            }
+
+            const now = Date.now();
+            if (now - lastProgressEmitAtRef.current >= PROGRESS_EMIT_INTERVAL_MS) {
+                lastProgressEmitAtRef.current = now;
+                updateProgress({
+                    currentTime: audio.currentTime || 0,
+                    duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+                });
+            }
+
+            const remaining = Number.isFinite(audio.duration) ? audio.duration - audio.currentTime : Number.POSITIVE_INFINITY;
+            if (!audio.paused && remaining <= crossfadeDurationSecondsRef.current + 0.25) {
+                startCrossfadeRef.current();
+            }
+        };
+
+        audio.onplay = () => {
+            if (requestToken !== requestTokenRef.current || audio !== audioRef.current) {
+                return;
+            }
+
+            setIsPlaying(true);
+            setLoadingTrackId(null);
+        };
+
+        audio.onpause = () => {
+            if (requestToken !== requestTokenRef.current || audio !== audioRef.current) {
+                return;
+            }
+
+            setIsPlaying(false);
+        };
+
+        audio.onerror = () => {
+            if (requestToken !== requestTokenRef.current || audio !== audioRef.current) {
+                return;
+            }
+
+            toast.error("Failed to play downloaded track", {
+                description: `Could not load "${track.title}" from disk.`,
+            });
+            stopPlayback();
+        };
+
+        audio.onended = () => {
+            if (requestToken !== requestTokenRef.current || audio !== audioRef.current || isCrossfadingRef.current) {
+                return;
+            }
+
+            const currentIndex = tracksRef.current.findIndex((candidate) => candidate.id === track.id);
+            void playTrackByIndex(currentIndex + 1);
+        };
+    }, [stopPlayback, updateProgress]);
+
+    const startCrossfade = useCallback(async () => {
+        const currentTrackId = currentTrackIdRef.current;
+        const activeAudio = audioRef.current;
+        const requestToken = requestTokenRef.current;
+
+        if (!crossfadeEnabledRef.current || !activeAudio || !currentTrackId || isCrossfadingRef.current) {
+            return;
+        }
+
+        const currentIndex = tracksRef.current.findIndex((track) => track.id === currentTrackId);
+        const nextTrack = currentIndex >= 0 ? tracksRef.current[currentIndex + 1] : null;
+        if (!nextTrack) {
+            return;
+        }
+
+        const durationSeconds = crossfadeDurationSecondsRef.current;
+        if (!Number.isFinite(activeAudio.duration) || activeAudio.duration <= 0) {
+            return;
+        }
+
+        if (activeAudio.duration - activeAudio.currentTime > durationSeconds) {
+            return;
+        }
+
+        isCrossfadingRef.current = true;
+        setLoadingTrackId(nextTrack.id);
+
+        try {
+            const src = await resolveSource(nextTrack.filePath);
+            if (requestToken !== requestTokenRef.current || audioRef.current !== activeAudio) {
+                isCrossfadingRef.current = false;
+                return;
+            }
+
+            const nextAudio = new Audio();
+            nextAudio.preload = "auto";
+            nextAudio.volume = 0;
+            nextAudio.src = src;
+            await nextAudio.play();
+
+            if (requestToken !== requestTokenRef.current || audioRef.current !== activeAudio) {
+                disposeAudio(nextAudio);
+                isCrossfadingRef.current = false;
+                return;
+            }
+
+            fadingAudioRef.current = activeAudio;
+            audioRef.current = nextAudio;
+            currentTrackIdRef.current = nextTrack.id;
+            setCurrentTrackId(nextTrack.id);
+            setIsPlaying(true);
+            lastProgressEmitAtRef.current = 0;
+            updateProgress({
+                currentTime: nextAudio.currentTime || 0,
+                duration: Number.isFinite(nextAudio.duration) ? nextAudio.duration : 0,
+            }, true);
+            bindActiveAudioHandlers(nextAudio, nextTrack, requestToken);
+
+            activeAudio.onloadedmetadata = null;
+            activeAudio.ontimeupdate = null;
+            activeAudio.onplay = null;
+            activeAudio.onpause = null;
+            activeAudio.onended = null;
+            activeAudio.onerror = null;
+
+            clearCrossfadeInterval();
+            const fadeStartedAt = Date.now();
+            const fadeDurationMs = Math.max(durationSeconds * 1000, CROSSFADE_STEP_INTERVAL_MS);
+            crossfadeIntervalRef.current = window.setInterval(() => {
+                if (requestToken !== requestTokenRef.current) {
+                    disposeFadingAudio();
+                    return;
+                }
+
+                const elapsed = Date.now() - fadeStartedAt;
+                const progress = Math.min(elapsed / fadeDurationMs, 1);
+                nextAudio.volume = progress;
+                activeAudio.volume = Math.max(0, 1 - progress);
+
+                if (progress >= 1) {
+                    disposeAudio(activeAudio);
+                    fadingAudioRef.current = null;
+                    clearCrossfadeInterval();
+                    isCrossfadingRef.current = false;
+                }
+            }, CROSSFADE_STEP_INTERVAL_MS);
+        }
+        catch (error: any) {
+            isCrossfadingRef.current = false;
+            toast.error("Crossfade failed", {
+                description: error?.message || `Could not start "${nextTrack.title}".`,
+            });
+        }
+        finally {
+            if (requestToken === requestTokenRef.current) {
+                setLoadingTrackId((current) => (current === nextTrack.id ? null : current));
+            }
+        }
+    }, [bindActiveAudioHandlers, clearCrossfadeInterval, disposeFadingAudio, resolveSource, updateProgress]);
+
+    useEffect(() => {
+        startCrossfadeRef.current = () => {
+            void startCrossfade();
+        };
+    }, [startCrossfade]);
+
     const playTrackByIndex = useCallback(async (index: number) => {
         const nextTrack = tracksRef.current[index];
         if (!nextTrack) {
@@ -106,6 +314,7 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
         }
 
         const requestToken = ++requestTokenRef.current;
+        disposeFadingAudio();
         setLoadingTrackId(nextTrack.id);
         disposeAudio(audioRef.current);
         audioRef.current = null;
@@ -126,53 +335,10 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
 
             const audio = audioRef.current ?? new Audio();
             audio.preload = "none";
+            audio.volume = 1;
             audio.src = src;
             audioRef.current = audio;
-
-            audio.onloadedmetadata = () => {
-                updateProgress({
-                    currentTime: audio.currentTime || 0,
-                    duration: Number.isFinite(audio.duration) ? audio.duration : 0,
-                }, true);
-            };
-
-            audio.ontimeupdate = () => {
-                const now = Date.now();
-                if (now - lastProgressEmitAtRef.current < PROGRESS_EMIT_INTERVAL_MS) {
-                    return;
-                }
-
-                lastProgressEmitAtRef.current = now;
-                updateProgress({
-                    currentTime: audio.currentTime || 0,
-                    duration: Number.isFinite(audio.duration) ? audio.duration : 0,
-                });
-            };
-
-            audio.onplay = () => {
-                setIsPlaying(true);
-                setLoadingTrackId(null);
-            };
-
-            audio.onpause = () => {
-                setIsPlaying(false);
-            };
-
-            audio.onerror = () => {
-                if (requestToken !== requestTokenRef.current) {
-                    return;
-                }
-
-                toast.error("Failed to play downloaded track", {
-                    description: `Could not load "${nextTrack.title}" from disk.`,
-                });
-                stopPlayback();
-            };
-
-            audio.onended = () => {
-                const currentIndex = tracksRef.current.findIndex((track) => track.id === nextTrack.id);
-                void playTrackByIndex(currentIndex + 1);
-            };
+            bindActiveAudioHandlers(audio, nextTrack, requestToken);
 
             await audio.play();
         }
@@ -191,7 +357,18 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
                 setLoadingTrackId((current) => (current === nextTrack.id ? null : current));
             }
         }
-    }, [resolveSource, stopPlayback]);
+    }, [bindActiveAudioHandlers, disposeFadingAudio, resolveSource, stopPlayback]);
+
+    useEffect(() => {
+        applyCrossfadeSettings();
+
+        const handleSettingsUpdate = (event: Event) => {
+            applyCrossfadeSettings((event as CustomEvent<Partial<Settings>>).detail);
+        };
+
+        window.addEventListener("settingsUpdated", handleSettingsUpdate);
+        return () => window.removeEventListener("settingsUpdated", handleSettingsUpdate);
+    }, [applyCrossfadeSettings]);
 
     const toggleTrack = useCallback(async (track: LocalAudioTrack) => {
         if (currentTrackIdRef.current === track.id && audioRef.current) {
@@ -210,6 +387,7 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
                 }
             }
             else {
+                disposeFadingAudio();
                 audioRef.current.pause();
             }
             return;
@@ -221,7 +399,7 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
         }
 
         await playTrackByIndex(trackIndex);
-    }, [playTrackByIndex]);
+    }, [disposeFadingAudio, playTrackByIndex]);
 
     const playNext = useCallback(async () => {
         if (!tracksRef.current.length) {
@@ -247,6 +425,7 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
             return;
         }
 
+        disposeFadingAudio();
         const boundedTime = Math.min(Math.max(nextTime, 0), Number.isFinite(audio.duration) ? audio.duration : nextTime);
         audio.currentTime = boundedTime;
         lastProgressEmitAtRef.current = Date.now();
@@ -254,15 +433,16 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
             currentTime: boundedTime,
             duration: Number.isFinite(audio.duration) ? audio.duration : 0,
         }, true);
-    }, [updateProgress]);
+    }, [disposeFadingAudio, updateProgress]);
 
     useEffect(() => {
         return () => {
             requestTokenRef.current += 1;
+            disposeFadingAudio();
             disposeAudio(audioRef.current);
             audioRef.current = null;
         };
-    }, []);
+    }, [disposeFadingAudio]);
 
     const currentTrack = useMemo(() => {
         if (!currentTrackId) {

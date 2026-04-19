@@ -7,6 +7,7 @@ interface DownloadedAlbumsCarouselProps {
     isLoading?: boolean;
     activeCollectionKey?: string | null;
     isCurrentCollectionPlaying?: boolean;
+    onOpenCollection: (folder: DownloadedFolderSummary) => void;
     onPlay: (folder: DownloadedFolderSummary) => void;
     onOpenFolder: (folder: DownloadedFolderSummary) => void;
 }
@@ -16,6 +17,7 @@ export function DownloadedAlbumsCarousel({
     isLoading = false,
     activeCollectionKey,
     isCurrentCollectionPlaying = false,
+    onOpenCollection,
     onPlay,
     onOpenFolder,
 }: DownloadedAlbumsCarouselProps) {
@@ -47,7 +49,8 @@ export function DownloadedAlbumsCarousel({
                     return (
                         <div
                             key={folder.folder_path}
-                            className="group relative w-[130px] overflow-hidden rounded-lg border bg-card transition-colors hover:bg-accent"
+                            className="group relative w-[130px] cursor-pointer overflow-hidden rounded-lg border bg-card transition-colors hover:bg-accent"
+                            onClick={() => onOpenCollection(folder)}
                         >
                             <div className="p-2">
                                 <div className="relative mb-2 aspect-square w-full overflow-hidden rounded-md bg-muted">
@@ -63,7 +66,10 @@ export function DownloadedAlbumsCarousel({
                                             type="button"
                                             size="icon-sm"
                                             className="h-8 w-8 rounded-full shadow-lg"
-                                            onClick={() => onPlay(folder)}
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                onPlay(folder);
+                                            }}
                                         >
                                             {isCurrentCollection && isCurrentCollectionPlaying ? (
                                                 <Pause className="h-3.5 w-3.5 fill-current" />
@@ -92,7 +98,10 @@ export function DownloadedAlbumsCarousel({
                                     variant="ghost"
                                     size="icon-sm"
                                     className="absolute right-2 top-2 h-7 w-7 rounded-full bg-black/35 text-white opacity-0 transition-opacity hover:bg-black/55 group-hover:opacity-100"
-                                    onClick={() => onOpenFolder(folder)}
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        onOpenFolder(folder);
+                                    }}
                                 >
                                     <FolderOpen className="h-3.5 w-3.5" />
                                 </Button>
