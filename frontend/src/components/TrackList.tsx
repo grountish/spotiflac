@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Download, CheckCircle, XCircle, FileCheck, FileText, Globe, ImageDown, Play, Pause, Trash2 } from "lucide-react";
+import { Download, CheckCircle, XCircle, FileCheck, Globe, Play, Pause, Trash2 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger, } from "@/components/ui/tooltip";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious, } from "@/components/ui/pagination";
@@ -58,7 +58,7 @@ interface TrackListProps {
     }) => void;
     onTrackClick?: (track: TrackMetadata) => void;
 }
-export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloadedTracks, failedTracks, skippedTracks, downloadingTrack, isDownloading, currentPage, itemsPerPage, showCheckboxes = false, hideAlbumColumn = false, folderName, isArtistDiscography = false, downloadedLyrics, failedLyrics, skippedLyrics, downloadingLyricsTrack, checkingAvailabilityTrack, availabilityMap, downloadedCovers, failedCovers, skippedCovers, downloadingCoverTrack, localTrackPaths, localPlayingTrackId, localLoadingTrackId, onToggleTrack, onToggleSelectAll, onDownloadTrack, onDownloadLyrics, onCheckAvailability, onDownloadCover, onPageChange, onPlayLocalTrack, onDeleteLocalTrack, onAlbumClick, onArtistClick, onTrackClick, }: TrackListProps) {
+export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloadedTracks, failedTracks, skippedTracks, downloadingTrack, isDownloading, currentPage, itemsPerPage, showCheckboxes = false, hideAlbumColumn = false, folderName, checkingAvailabilityTrack, availabilityMap, localTrackPaths, localPlayingTrackId, localLoadingTrackId, onToggleTrack, onToggleSelectAll, onDownloadTrack, onCheckAvailability, onPageChange, onPlayLocalTrack, onDeleteLocalTrack, onAlbumClick, onArtistClick, onTrackClick, }: TrackListProps) {
     const { playPreview, loadingPreview, playingTrack } = usePreview();
     let filteredTracks = tracks.filter((track) => {
         if (!searchQuery)
@@ -170,13 +170,24 @@ export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloa
         const seconds = Math.floor((ms % 60000) / 1000);
         return `${minutes}:${seconds.toString().padStart(2, "0")}`;
     };
-    const formatPlays = (plays: string | undefined) => {
-        if (!plays)
-            return "";
-        const num = parseInt(plays, 10);
-        if (isNaN(num))
-            return plays;
-        return num.toLocaleString();
+    const getLocalQualityLabel = (spotifyId?: string) => {
+        if (!spotifyId) {
+            return "—";
+        }
+        const localPath = localTrackPaths?.get(spotifyId);
+        if (!localPath) {
+            return "—";
+        }
+        const extension = localPath.split(".").pop()?.toUpperCase();
+        switch (extension) {
+            case "FLAC":
+            case "MP3":
+            case "M4A":
+            case "AAC":
+                return extension;
+            default:
+                return "LOCAL";
+        }
     };
     const getAvailabilityButtonIcon = (spotifyId?: string) => {
         if (!spotifyId) {
@@ -209,14 +220,17 @@ export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloa
               <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
                 Title
               </th>
+              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">
+                Artist
+              </th>
               {!hideAlbumColumn && (<th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground hidden md:table-cell">
                 Album
               </th>)}
               <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground hidden lg:table-cell w-24">
-                Duration
+                Quality
               </th>
-              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground hidden xl:table-cell w-32">
-                Plays
+              <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground hidden lg:table-cell w-24">
+                Duration
               </th>
               <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground w-32">
                 Actions
@@ -242,20 +256,22 @@ export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloa
                   </span>)}
                 </div>
               </td>
-              <td className="p-4 align-middle">
+              <td className="p-3 align-middle">
                 <div className="flex items-center gap-3">
-                  {track.images && (<img src={track.images} alt={track.name} className="w-10 h-10 rounded object-cover"/>)}
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-2">
-                      {onTrackClick ? (<span className="font-medium cursor-pointer hover:underline" onClick={() => onTrackClick(track)}>
+                  {track.images && (<img src={track.images} alt={track.name} className="h-8 w-8 rounded object-cover shrink-0"/>)}
+                  <div className="flex min-w-0 items-center gap-2">
+                    {onTrackClick ? (<span className="truncate font-medium cursor-pointer hover:underline" onClick={() => onTrackClick(track)}>
                         {track.name}
                       </span>) : (<span className="font-medium">{track.name}</span>)}
-                      {track.is_explicit && (<span className="inline-flex items-center justify-center bg-red-600 text-white text-[10px] h-4 w-4 rounded shrink-0" title="Explicit">E</span>)}
+                    {track.is_explicit && (<span className="inline-flex items-center justify-center bg-red-600 text-white text-[10px] h-4 w-4 rounded shrink-0" title="Explicit">E</span>)}
 
-                      {track.spotify_id && skippedTracks.has(track.spotify_id) ? (<FileCheck className="h-4 w-4 text-yellow-500 shrink-0"/>) : track.spotify_id && (localTrackPaths ? localTrackPaths.has(track.spotify_id) : downloadedTracks.has(track.spotify_id)) ? (<CheckCircle className="h-4 w-4 text-green-500 shrink-0"/>) : track.spotify_id && failedTracks.has(track.spotify_id) ? (<XCircle className="h-4 w-4 text-red-500 shrink-0"/>) : null}
-                    </div>
-                    <span className="text-sm text-muted-foreground">
-                      {(() => {
+                    {track.spotify_id && skippedTracks.has(track.spotify_id) ? (<FileCheck className="h-4 w-4 text-yellow-500 shrink-0"/>) : track.spotify_id && (localTrackPaths ? localTrackPaths.has(track.spotify_id) : downloadedTracks.has(track.spotify_id)) ? (<CheckCircle className="h-4 w-4 text-green-500 shrink-0"/>) : track.spotify_id && failedTracks.has(track.spotify_id) ? (<XCircle className="h-4 w-4 text-red-500 shrink-0"/>) : null}
+                  </div>
+                </div>
+              </td>
+              <td className="p-3 align-middle text-sm text-muted-foreground hidden md:table-cell">
+                <span className="line-clamp-1">
+                  {(() => {
                 const clickableArtists = buildClickableArtists(track.artists, track.artists_data, track.artist_id, track.artist_url);
                 if (clickableArtists.length === 0) {
                     return track.artists;
@@ -271,9 +287,7 @@ export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloa
                             {i < clickableArtists.length - 1 && ", "}
                           </span>));
             })()}
-                    </span>
-                  </div>
-                </div>
+                </span>
               </td>
               {!hideAlbumColumn && (<td className="p-4 align-middle text-sm text-muted-foreground hidden md:table-cell">
                 {onAlbumClick && track.album_id && track.album_url ? (<span className="cursor-pointer hover:underline" onClick={() => onAlbumClick({
@@ -284,11 +298,11 @@ export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloa
                   {track.album_name}
                 </span>) : (track.album_name)}
               </td>)}
+              <td className="p-3 align-middle text-sm text-muted-foreground hidden lg:table-cell">
+                {getLocalQualityLabel(track.spotify_id)}
+              </td>
               <td className="p-4 align-middle text-sm text-muted-foreground hidden lg:table-cell">
                 {formatDuration(track.duration_ms)}
-              </td>
-              <td className="p-4 align-middle text-sm text-muted-foreground hidden xl:table-cell">
-                {track.plays ? formatPlays(track.plays) : ""}
               </td>
               <td className="p-4 align-middle text-center">
                 <div className="flex items-center justify-center gap-1">
@@ -329,29 +343,6 @@ export function TrackList({ tracks, searchQuery, sortBy, selectedTracks, downloa
                     </TooltipTrigger>
                     <TooltipContent>
                       <p>{playingTrack === track.spotify_id ? "Stop Preview" : "Play Preview"}</p>
-                    </TooltipContent>
-                  </Tooltip>)}
-                  {track.spotify_id && onDownloadLyrics && (<Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button onClick={() => onDownloadLyrics(track.spotify_id!, track.name, track.artists, track.album_name, folderName, isArtistDiscography, startIndex + index + 1, track.album_artist, track.release_date, track.disc_number)} size="icon" variant="outline" disabled={downloadingLyricsTrack === track.spotify_id}>
-                        {downloadingLyricsTrack === track.spotify_id ? (<Spinner />) : skippedLyrics?.has(track.spotify_id) ? (<FileCheck className="h-4 w-4 text-yellow-500"/>) : downloadedLyrics?.has(track.spotify_id) ? (<CheckCircle className="h-4 w-4 text-green-500"/>) : failedLyrics?.has(track.spotify_id) ? (<XCircle className="h-4 w-4 text-red-500"/>) : (<FileText className="h-4 w-4"/>)}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Download Separate Lyric</p>
-                    </TooltipContent>
-                  </Tooltip>)}
-                  {track.images && onDownloadCover && (<Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button onClick={() => {
-                    const trackId = track.spotify_id || `${track.name}-${track.artists}`;
-                    onDownloadCover(track.images, track.name, track.artists, track.album_name, folderName, isArtistDiscography, startIndex + index + 1, trackId, track.album_artist, track.release_date, track.disc_number);
-                }} size="icon" variant="outline" disabled={downloadingCoverTrack === (track.spotify_id || `${track.name}-${track.artists}`)}>
-                        {downloadingCoverTrack === (track.spotify_id || `${track.name}-${track.artists}`) ? (<Spinner />) : skippedCovers?.has(track.spotify_id || `${track.name}-${track.artists}`) ? (<FileCheck className="h-4 w-4 text-yellow-500"/>) : downloadedCovers?.has(track.spotify_id || `${track.name}-${track.artists}`) ? (<CheckCircle className="h-4 w-4 text-green-500"/>) : failedCovers?.has(track.spotify_id || `${track.name}-${track.artists}`) ? (<XCircle className="h-4 w-4 text-red-500"/>) : (<ImageDown className="h-4 w-4"/>)}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Download Separate Cover</p>
                     </TooltipContent>
                   </Tooltip>)}
                   {track.spotify_id && onCheckAvailability && (<Tooltip>

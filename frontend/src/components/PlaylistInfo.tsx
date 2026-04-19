@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Download, FolderOpen, ImageDown, FileText, XCircle, Play, Pause, Trash2 } from "lucide-react";
+import { Download, FolderOpen, ImageDown, XCircle, Play, Pause, Trash2 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SearchAndSort } from "./SearchAndSort";
@@ -90,7 +90,7 @@ interface PlaylistInfoProps {
     onTrackClick: (track: TrackMetadata) => void;
     onBack?: () => void;
 }
-export function PlaylistInfo({ playlistInfo, trackList, searchQuery, sortBy, selectedTracks, downloadedTracks, failedTracks, skippedTracks, downloadingTrack, isDownloading, bulkDownloadType, downloadProgress, currentDownloadInfo, currentPage, itemsPerPage, downloadedLyrics, failedLyrics, skippedLyrics, downloadingLyricsTrack, checkingAvailabilityTrack, availabilityMap, downloadedCovers, failedCovers, skippedCovers, downloadingCoverTrack, isBulkDownloadingCovers, isBulkDownloadingLyrics, isMetadataLoading = false, sharedLocalPlayer, onSearchChange, onSortChange, onToggleTrack, onToggleSelectAll, onDownloadTrack, onDownloadLyrics, onDownloadCover, onCheckAvailability, onDownloadAllLyrics, onDownloadAllCovers, onDownloadAll, onDownloadSelected, onStopDownload, onOpenFolder, onPageChange, onAlbumClick, onArtistClick, onTrackClick, onBack, }: PlaylistInfoProps) {
+export function PlaylistInfo({ playlistInfo, trackList, searchQuery, sortBy, selectedTracks, downloadedTracks, failedTracks, skippedTracks, downloadingTrack, isDownloading, bulkDownloadType, downloadProgress, currentDownloadInfo, currentPage, itemsPerPage, downloadedLyrics, failedLyrics, skippedLyrics, downloadingLyricsTrack, checkingAvailabilityTrack, availabilityMap, downloadedCovers, failedCovers, skippedCovers, downloadingCoverTrack, isMetadataLoading = false, sharedLocalPlayer, onSearchChange, onSortChange, onToggleTrack, onToggleSelectAll, onDownloadTrack, onDownloadLyrics, onDownloadCover, onCheckAvailability, onDownloadAll, onDownloadSelected, onStopDownload, onOpenFolder, onPageChange, onAlbumClick, onArtistClick, onTrackClick, onBack, }: PlaylistInfoProps) {
     const settings = getSettings();
     const playlistName = playlistInfo.owner.name;
     const playlistFolderName = buildPlaylistFolderName(playlistName, playlistInfo.owner.display_name, settings.playlistOwnerFolderName);
@@ -232,26 +232,6 @@ export function PlaylistInfo({ playlistInfo, trackList, searchQuery, sortBy, sel
                     {isDownloading && bulkDownloadType === "selected" ? (<Spinner />) : (<Download className="h-4 w-4"/>)}
                     Download Selected ({selectedTracks.length.toLocaleString()})
                   </Button>)}
-                {onDownloadAllLyrics && (<Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button onClick={onDownloadAllLyrics} variant="outline" disabled={isBulkDownloadingLyrics}>
-                        {isBulkDownloadingLyrics ? <Spinner /> : <FileText className="h-4 w-4"/>}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Download All Lyrics</p>
-                    </TooltipContent>
-                  </Tooltip>)}
-                {onDownloadAllCovers && (<Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button onClick={onDownloadAllCovers} variant="outline" disabled={isBulkDownloadingCovers}>
-                        {isBulkDownloadingCovers ? <Spinner /> : <ImageDown className="h-4 w-4"/>}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Download All Separate Covers</p>
-                    </TooltipContent>
-                  </Tooltip>)}
                 {localCollection.localTrackPaths.size > 0 && (<Tooltip>
                     <TooltipTrigger asChild>
                       <Button onClick={onOpenFolder} variant="outline" size="icon">

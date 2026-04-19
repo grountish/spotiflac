@@ -29,8 +29,6 @@ export function SearchAndSort({ searchQuery, sortBy, onSearchChange, onSortChang
           <SelectItem value="artist-desc">Artist (Z-A)</SelectItem>
           <SelectItem value="duration-asc">Duration (Short)</SelectItem>
           <SelectItem value="duration-desc">Duration (Long)</SelectItem>
-          <SelectItem value="plays-asc">Plays (Low)</SelectItem>
-          <SelectItem value="plays-desc">Plays (High)</SelectItem>
           <SelectItem value="downloaded">Downloaded</SelectItem>
           <SelectItem value="not-downloaded">Not Downloaded</SelectItem>
           <SelectItem value="failed">Failed Downloads</SelectItem>

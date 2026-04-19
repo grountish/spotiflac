@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Download, FolderOpen, CheckCircle, XCircle, FileText, FileCheck, Globe, ImageDown, Play, Pause } from "lucide-react";
+import { Download, FolderOpen, CheckCircle, XCircle, FileCheck, Globe, Play, Pause } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger, } from "@/components/ui/tooltip";
 import type { TrackMetadata, TrackAvailability } from "@/types/api";
@@ -44,7 +44,7 @@ interface TrackInfoProps {
     }) => void;
     onBack?: () => void;
 }
-export function TrackInfo({ track, isDownloading, downloadingTrack, isDownloaded, isFailed, isSkipped, downloadingLyricsTrack, downloadedLyrics, failedLyrics, skippedLyrics, checkingAvailability, availability, downloadingCover, downloadedCover, failedCover, skippedCover, onDownload, onDownloadLyrics, onCheckAvailability, onDownloadCover, onOpenFolder, onAlbumClick, onArtistClick, onBack, }: TrackInfoProps) {
+export function TrackInfo({ track, isDownloading, downloadingTrack, isDownloaded, isFailed, isSkipped, checkingAvailability, availability, onDownload, onCheckAvailability, onOpenFolder, onAlbumClick, onArtistClick, onBack, }: TrackInfoProps) {
     const { playPreview, loadingPreview, playingTrack } = usePreview();
     const hasAlbumClick = !!(onAlbumClick && track.album_id && track.album_url);
     const clickableArtists = buildClickableArtists(track.artists, track.artists_data, track.artist_id, track.artist_url);
@@ -140,26 +140,6 @@ export function TrackInfo({ track, isDownloading, downloadingTrack, isDownloaded
               </TooltipTrigger>
               <TooltipContent>
                 <p>{playingTrack === track.spotify_id ? "Stop Preview" : "Play Preview"}</p>
-              </TooltipContent>
-            </Tooltip>)}
-            {track.spotify_id && onDownloadLyrics && (<Tooltip>
-              <TooltipTrigger asChild>
-                <Button onClick={() => onDownloadLyrics(track.spotify_id!, track.name, track.artists, track.album_name, track.album_artist, track.release_date, track.disc_number)} variant="outline" size="icon" disabled={downloadingLyricsTrack === track.spotify_id}>
-                  {downloadingLyricsTrack === track.spotify_id ? (<Spinner />) : skippedLyrics ? (<FileCheck className="h-4 w-4 text-yellow-500"/>) : downloadedLyrics ? (<CheckCircle className="h-4 w-4 text-green-500"/>) : failedLyrics ? (<XCircle className="h-4 w-4 text-red-500"/>) : (<FileText className="h-4 w-4"/>)}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Download Separate Lyric</p>
-              </TooltipContent>
-            </Tooltip>)}
-            {track.images && onDownloadCover && (<Tooltip>
-              <TooltipTrigger asChild>
-                <Button onClick={() => onDownloadCover(track.images, track.name, track.artists, track.album_name, undefined, undefined, track.spotify_id, track.album_artist, track.release_date, track.disc_number)} variant="outline" size="icon" disabled={downloadingCover}>
-                  {downloadingCover ? (<Spinner />) : skippedCover ? (<FileCheck className="h-4 w-4 text-yellow-500"/>) : downloadedCover ? (<CheckCircle className="h-4 w-4 text-green-500"/>) : failedCover ? (<XCircle className="h-4 w-4 text-red-500"/>) : (<ImageDown className="h-4 w-4"/>)}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Download Separate Cover</p>
               </TooltipContent>
             </Tooltip>)}
             {track.spotify_id && onCheckAvailability && (<Tooltip>

@@ -13,12 +13,6 @@ export function useMetadata() {
     const loadingToastId = useRef<string | number | null>(null);
     const fetchedCount = useRef(0);
     const currentName = useRef("");
-    const [showAlbumDialog, setShowAlbumDialog] = useState(false);
-    const [selectedAlbum, setSelectedAlbum] = useState<{
-        id: string;
-        name: string;
-        external_urls: string;
-    } | null>(null);
     const [pendingArtistName, setPendingArtistName] = useState<string | null>(null);
     const showFetchFailureAdvice = (errorMsg: string) => {
         setFetchFailureReason(errorMsg);
@@ -259,14 +253,14 @@ export function useMetadata() {
         }
         return urlToFetch;
     };
-    const handleAlbumClick = (album: {
+    const handleAlbumClick = async (album: {
         id: string;
         name: string;
         external_urls: string;
     }) => {
         logger.debug(`album clicked: ${album.name}`);
-        setSelectedAlbum(album);
-        setShowAlbumDialog(true);
+        await fetchMetadataDirectly(album.external_urls);
+        return album.external_urls;
     };
     const handleArtistClick = async (artist: {
         id: string;
@@ -286,63 +280,15 @@ export function useMetadata() {
         await fetchMetadataDirectly(artistUrl);
         return resolvedArtistUrl;
     };
-    const handleConfirmAlbumFetch = async () => {
-        if (!selectedAlbum)
-            return;
-        const albumUrl = selectedAlbum.external_urls;
-        logger.info(`fetching album: ${selectedAlbum.name}...`);
-        logger.debug(`url: ${albumUrl}`);
-        setShowAlbumDialog(false);
-        setLoading(true);
-        setMetadata(null);
-        try {
-            const startTime = Date.now();
-            const data = await fetchSpotifyMetadata(albumUrl);
-            const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
-            if ("album_info" in data) {
-                const albumInfo = data.album_info;
-                if (!albumInfo.name && albumInfo.total_tracks === 0 && data.track_list.length === 0) {
-                    logger.warning("album appears to be empty or not found");
-                    toast.error("Album not found or may be private");
-                    setMetadata(null);
-                    setSelectedAlbum(null);
-                    return albumUrl;
-                }
-            }
-            setMetadata(data);
-            saveToHistory(albumUrl, data);
-            if ("album_info" in data) {
-                logger.success(`fetched album: ${data.album_info.name}`);
-                logger.debug(`${data.track_list.length} tracks, released: ${data.album_info.release_date}`);
-            }
-            logger.info(`fetch completed in ${elapsed}s`);
-            toast.success("Album metadata fetched successfully");
-            return albumUrl;
-        }
-        catch (err) {
-            const errorMsg = err instanceof Error ? err.message : "Failed to fetch album metadata";
-            logger.error(`fetch failed: ${errorMsg}`);
-            toast.error(errorMsg);
-            showFetchFailureAdvice(errorMsg);
-        }
-        finally {
-            setLoading(false);
-            setSelectedAlbum(null);
-        }
-    };
     return {
         loading,
         metadata,
         showVpnAdviceDialog,
         setShowVpnAdviceDialog,
         fetchFailureReason,
-        showAlbumDialog,
-        setShowAlbumDialog,
-        selectedAlbum,
         pendingArtistName,
         handleFetchMetadata,
         handleAlbumClick,
-        handleConfirmAlbumFetch,
         handleArtistClick,
         loadFromCache,
         resetMetadata: () => setMetadata(null),

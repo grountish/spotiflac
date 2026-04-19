@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Download, FolderOpen, ImageDown, FileText, BadgeCheck, XCircle, Filter, Play, Pause, Trash2 } from "lucide-react";
+import { Download, FolderOpen, ImageDown, BadgeCheck, XCircle, Filter, Play, Pause, Trash2 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SearchAndSort } from "./SearchAndSort";
@@ -97,7 +97,7 @@ interface ArtistInfoProps {
     onTrackClick?: (track: TrackMetadata) => void;
     onBack?: () => void;
 }
-export function ArtistInfo({ artistInfo, albumList, trackList, searchQuery, sortBy, selectedTracks, downloadedTracks, failedTracks, skippedTracks, downloadingTrack, isDownloading, bulkDownloadType, downloadProgress, currentDownloadInfo, currentPage, itemsPerPage, downloadedLyrics, failedLyrics, skippedLyrics, downloadingLyricsTrack, checkingAvailabilityTrack, availabilityMap, downloadedCovers, failedCovers, skippedCovers, downloadingCoverTrack, isBulkDownloadingCovers, isBulkDownloadingLyrics, isMetadataLoading = false, sharedLocalPlayer, onSearchChange, onSortChange, onToggleTrack, onToggleSelectAll, onDownloadTrack, onDownloadLyrics, onDownloadCover, onCheckAvailability, onDownloadAllLyrics, onDownloadAllCovers, onDownloadAll, onDownloadSelected, onStopDownload, onOpenFolder, onAlbumClick, onArtistClick, onPageChange, onTrackClick, onBack, }: ArtistInfoProps) {
+export function ArtistInfo({ artistInfo, albumList, trackList, searchQuery, sortBy, selectedTracks, downloadedTracks, failedTracks, skippedTracks, downloadingTrack, isDownloading, bulkDownloadType, downloadProgress, currentDownloadInfo, currentPage, itemsPerPage, downloadedLyrics, failedLyrics, skippedLyrics, downloadingLyricsTrack, checkingAvailabilityTrack, availabilityMap, downloadedCovers, failedCovers, skippedCovers, downloadingCoverTrack, isMetadataLoading = false, sharedLocalPlayer, onSearchChange, onSortChange, onToggleTrack, onToggleSelectAll, onDownloadTrack, onDownloadLyrics, onDownloadCover, onCheckAvailability, onDownloadAll, onDownloadSelected, onStopDownload, onOpenFolder, onAlbumClick, onArtistClick, onPageChange, onTrackClick, onBack, }: ArtistInfoProps) {
     const localCollection = useLocalCollection({
         collectionImageUrl: artistInfo.images,
         collectionKey: `artist:${artistInfo.name}`,
@@ -630,26 +630,6 @@ export function ArtistInfo({ artistInfo, albumList, trackList, searchQuery, sort
                   {isDownloading && bulkDownloadType === "selected" ? (<Spinner />) : (<Download className="h-4 w-4"/>)}
                   Download Selected ({selectedTracks.length.toLocaleString()})
                 </Button>)}
-              {onDownloadAllLyrics && (<Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button onClick={onDownloadAllLyrics} size="sm" variant="outline" disabled={isBulkDownloadingLyrics}>
-                      {isBulkDownloadingLyrics ? <Spinner /> : <FileText className="h-4 w-4"/>}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Download All Lyrics</p>
-                  </TooltipContent>
-                </Tooltip>)}
-              {onDownloadAllCovers && (<Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button onClick={onDownloadAllCovers} size="sm" variant="outline" disabled={isBulkDownloadingCovers}>
-                      {isBulkDownloadingCovers ? <Spinner /> : <ImageDown className="h-4 w-4"/>}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Download All Separate Covers</p>
-                  </TooltipContent>
-                </Tooltip>)}
               {localCollection.localTrackPaths.size > 0 && (<Tooltip>
                   <TooltipTrigger asChild>
                     <Button onClick={onOpenFolder} size="icon" variant="outline">
