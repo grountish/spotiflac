@@ -832,6 +832,35 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 		}
 		filename, err = downloader.DownloadTrackWithISRC(isrc, req.OutputDir, quality, req.FilenameFormat, req.TrackNumber, req.Position, req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, req.UseAlbumTrackNumber, req.CoverURL, req.EmbedMaxQualityCover, req.SpotifyTrackNumber, req.SpotifyDiscNumber, req.SpotifyTotalTracks, req.SpotifyTotalDiscs, req.Copyright, req.Publisher, req.Composer, metadataSeparator, spotifyURL, req.AllowFallback, req.UseFirstArtistOnly, req.UseSingleGenre, req.EmbedGenre)
 
+	case "soulseek":
+		filename, err = backend.DownloadTrackViaSoulseek(backend.SoulseekDownloadRequest{
+			TrackName:            req.TrackName,
+			ArtistName:           req.ArtistName,
+			AlbumName:            req.AlbumName,
+			AlbumArtist:          req.AlbumArtist,
+			ReleaseDate:          req.ReleaseDate,
+			CoverURL:             req.CoverURL,
+			OutputDir:            req.OutputDir,
+			FilenameFormat:       req.FilenameFormat,
+			TrackNumber:          req.TrackNumber,
+			Position:             req.Position,
+			UseAlbumTrackNumber:  req.UseAlbumTrackNumber,
+			SpotifyID:            req.SpotifyID,
+			Duration:             req.Duration,
+			SpotifyTrackNumber:   req.SpotifyTrackNumber,
+			SpotifyDiscNumber:    req.SpotifyDiscNumber,
+			SpotifyTotalTracks:   req.SpotifyTotalTracks,
+			SpotifyTotalDiscs:    req.SpotifyTotalDiscs,
+			ISRC:                 req.ISRC,
+			Copyright:            req.Copyright,
+			Publisher:            req.Publisher,
+			Composer:             req.Composer,
+			PlaylistName:         req.PlaylistName,
+			PlaylistOwner:        req.PlaylistOwner,
+			EmbedMaxQualityCover: req.EmbedMaxQualityCover,
+			Separator:            metadataSeparator,
+		})
+
 	default:
 		return DownloadResponse{
 			Success: false,
@@ -2050,6 +2079,21 @@ func (a *App) LoadSettings() (map[string]interface{}, error) {
 	}
 
 	return settings, nil
+}
+
+func (a *App) TestSoulseekConnection(baseURL string, apiKey string, downloadPath string) (string, error) {
+	result, err := backend.TestSoulseekConnection(baseURL, apiKey, downloadPath)
+	jsonData, marshalErr := json.Marshal(result)
+	if marshalErr != nil {
+		if err != nil {
+			return "", err
+		}
+		return "", marshalErr
+	}
+	if err != nil {
+		return string(jsonData), err
+	}
+	return string(jsonData), nil
 }
 
 func (a *App) CheckFFmpegInstalled() (bool, error) {

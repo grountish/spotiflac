@@ -65,6 +65,68 @@ export function useDownload(region: string) {
         artists: string;
     } | null>(null);
     const shouldStopDownloadRef = useRef(false);
+    const canUseSoulseekFallback = (settings: any) => Boolean(settings.enableSoulseekFallback &&
+        settings.soulseekURL?.trim() &&
+        settings.soulseekApiKey?.trim() &&
+        settings.soulseekDownloadPath?.trim());
+    const trySoulseekFallback = async (settings: any, request: {
+        query?: string;
+        trackName?: string;
+        artistName?: string;
+        albumName?: string;
+        albumArtist?: string;
+        releaseDate?: string;
+        coverUrl?: string;
+        outputDir: string;
+        position?: number;
+        useAlbumTrackNumber: boolean;
+        spotifyId?: string;
+        itemID?: string;
+        durationSeconds?: number;
+        spotifyTrackNumber?: number;
+        spotifyDiscNumber?: number;
+        spotifyTotalTracks?: number;
+        spotifyTotalDiscs?: number;
+        isrc?: string;
+        copyright?: string;
+        publisher?: string;
+    }) => {
+        if (!canUseSoulseekFallback(settings)) {
+            return null;
+        }
+        logger.debug(`trying soulseek fallback for: ${request.trackName} - ${request.artistName}`);
+        return downloadTrack({
+            service: "soulseek",
+            query: request.query,
+            track_name: request.trackName,
+            artist_name: request.artistName,
+            album_name: request.albumName,
+            album_artist: request.albumArtist,
+            release_date: request.releaseDate,
+            cover_url: request.coverUrl,
+            output_dir: request.outputDir,
+            filename_format: settings.filenameTemplate,
+            track_number: settings.trackNumber,
+            position: request.position,
+            use_album_track_number: request.useAlbumTrackNumber,
+            spotify_id: request.spotifyId,
+            embed_lyrics: settings.embedLyrics,
+            embed_max_quality_cover: settings.embedMaxQualityCover,
+            duration: request.durationSeconds,
+            item_id: request.itemID,
+            audio_format: "flac",
+            spotify_track_number: request.spotifyTrackNumber,
+            spotify_disc_number: request.spotifyDiscNumber,
+            spotify_total_tracks: request.spotifyTotalTracks,
+            spotify_total_discs: request.spotifyTotalDiscs,
+            isrc: request.isrc || undefined,
+            copyright: request.copyright,
+            publisher: request.publisher,
+            use_first_artist_only: settings.useFirstArtistOnly,
+            use_single_genre: settings.useSingleGenre,
+            embed_genre: settings.embedGenre,
+        });
+    };
     const downloadWithAutoFallback = async (id: string, settings: any, trackName?: string, artistName?: string, albumName?: string, playlistName?: string, position?: number, spotifyId?: string, durationMs?: number, releaseYear?: string, albumArtist?: string, releaseDate?: string, coverUrl?: string, spotifyTrackNumber?: number, spotifyDiscNumber?: number, spotifyTotalTracks?: number, spotifyTotalDiscs?: number, copyright?: string, publisher?: string) => {
         const service = settings.downloader;
         const query = trackName && artistName ? `${trackName} ${artistName} ` : undefined;
@@ -354,7 +416,7 @@ export function useDownload(region: string) {
         }
         logger.debug(`trying ${service} for: ${trackName} - ${artistName}`);
         const singleServiceResponse = await downloadTrack({
-            service: service as "tidal" | "qobuz" | "amazon",
+            service: service as "tidal" | "qobuz" | "amazon" | "soulseek",
             query,
             track_name: trackName,
             artist_name: displayArtist,
@@ -417,6 +479,9 @@ export function useDownload(region: string) {
         const yearValue = releaseYear || finalReleaseDate?.substring(0, 4);
         const hasSubfolder = settings.folderTemplate && settings.folderTemplate.trim() !== "";
         const trackNumberForTemplate = (hasSubfolder && finalTrackNumber > 0) ? finalTrackNumber : (position || 0);
+        if (hasSubfolder) {
+            useAlbumTrackNumber = true;
+        }
         const displayArtist = settings.useFirstArtistOnly && artistName
             ? getFirstArtist(artistName)
             : artistName;
@@ -618,6 +683,47 @@ export function useDownload(region: string) {
                     }
                 }
             }
+            if (!lastResponse.success) {
+                try {
+                    const response = await trySoulseekFallback(settings, {
+                        query,
+                        trackName,
+                        artistName: displayArtist,
+                        albumName,
+                        albumArtist: displayAlbumArtist,
+                        releaseDate: finalReleaseDate || releaseDate,
+                        coverUrl,
+                        outputDir,
+                        position: trackNumberForTemplate,
+                        useAlbumTrackNumber,
+                        spotifyId,
+                        itemID,
+                        durationSeconds,
+                        spotifyTrackNumber,
+                        spotifyDiscNumber,
+                        spotifyTotalTracks,
+                        spotifyTotalDiscs,
+                        isrc: resolvedTemplateISRC || undefined,
+                        copyright,
+                        publisher,
+                    });
+                    if (response?.success) {
+                        logger.success(`soulseek: ${trackName} - ${artistName}`);
+                        return response;
+                    }
+                    if (response) {
+                        const errMsg = response.error || response.message || "Failed";
+                        fallbackErrors.push(`[Soulseek] ${errMsg}`);
+                        lastResponse = response;
+                        logger.warning("soulseek fallback failed");
+                    }
+                }
+                catch (err) {
+                    logger.error(`soulseek error: ${err}`);
+                    fallbackErrors.push(`[Soulseek] ${String(err)}`);
+                    lastResponse = { success: false, error: String(err) };
+                }
+            }
             if (!lastResponse.success && itemID) {
                 const { MarkDownloadItemFailed } = await import("../../wailsjs/go/main/App");
                 const finalError = fallbackErrors.length > 0 ? fallbackErrors.join(" | ") : (lastResponse.error || "All services failed");
@@ -670,18 +776,19 @@ export function useDownload(region: string) {
         }
         return singleServiceResponse;
     };
-    const handleDownloadTrack = async (id: string, trackName?: string, artistName?: string, albumName?: string, spotifyId?: string, playlistName?: string, durationMs?: number, position?: number, albumArtist?: string, releaseDate?: string, coverUrl?: string, spotifyTrackNumber?: number, spotifyDiscNumber?: number, spotifyTotalTracks?: number, spotifyTotalDiscs?: number, copyright?: string, publisher?: string) => {
+    const handleSingleTrackDownload = async (mode: "default" | "soulseek", id: string, trackName?: string, artistName?: string, albumName?: string, spotifyId?: string, playlistName?: string, durationMs?: number, position?: number, albumArtist?: string, releaseDate?: string, coverUrl?: string, spotifyTrackNumber?: number, spotifyDiscNumber?: number, spotifyTotalTracks?: number, spotifyTotalDiscs?: number, copyright?: string, publisher?: string) => {
         if (!id) {
             toast.error("No ID found for this track");
             return;
         }
         const settings = getSettings();
         const displayArtist = settings.useFirstArtistOnly && artistName ? getFirstArtist(artistName) : artistName;
-        logger.info(`starting download: ${trackName} - ${displayArtist}`);
+        const modeLabel = mode === "soulseek" ? "soulseek download" : "download";
+        logger.info(`starting ${modeLabel}: ${trackName} - ${displayArtist}`);
         setDownloadingTrack(id);
         try {
             const releaseYear = releaseDate?.substring(0, 4);
-            const response = await downloadWithAutoFallback(id, settings, trackName, artistName, albumName, playlistName, position, spotifyId, durationMs, releaseYear, albumArtist || "", releaseDate, coverUrl, spotifyTrackNumber, spotifyDiscNumber, spotifyTotalTracks, spotifyTotalDiscs, copyright, publisher);
+            const response = await downloadWithAutoFallback(id, mode === "soulseek" ? { ...settings, downloader: "soulseek" } : settings, trackName, artistName, albumName, playlistName, position, spotifyId, durationMs, releaseYear, albumArtist || "", releaseDate, coverUrl, spotifyTrackNumber, spotifyDiscNumber, spotifyTotalTracks, spotifyTotalDiscs, copyright, publisher);
             if (response.success) {
                 if (response.already_exists) {
                     toast.info(response.message);
@@ -709,6 +816,12 @@ export function useDownload(region: string) {
         finally {
             setDownloadingTrack(null);
         }
+    };
+    const handleDownloadTrack = async (id: string, trackName?: string, artistName?: string, albumName?: string, spotifyId?: string, playlistName?: string, durationMs?: number, position?: number, albumArtist?: string, releaseDate?: string, coverUrl?: string, spotifyTrackNumber?: number, spotifyDiscNumber?: number, spotifyTotalTracks?: number, spotifyTotalDiscs?: number, copyright?: string, publisher?: string) => {
+        await handleSingleTrackDownload("default", id, trackName, artistName, albumName, spotifyId, playlistName, durationMs, position, albumArtist, releaseDate, coverUrl, spotifyTrackNumber, spotifyDiscNumber, spotifyTotalTracks, spotifyTotalDiscs, copyright, publisher);
+    };
+    const handleDownloadTrackWithSoulseek = async (id: string, trackName?: string, artistName?: string, albumName?: string, spotifyId?: string, playlistName?: string, durationMs?: number, position?: number, albumArtist?: string, releaseDate?: string, coverUrl?: string, spotifyTrackNumber?: number, spotifyDiscNumber?: number, spotifyTotalTracks?: number, spotifyTotalDiscs?: number, copyright?: string, publisher?: string) => {
+        await handleSingleTrackDownload("soulseek", id, trackName, artistName, albumName, spotifyId, playlistName, durationMs, position, albumArtist, releaseDate, coverUrl, spotifyTrackNumber, spotifyDiscNumber, spotifyTotalTracks, spotifyTotalDiscs, copyright, publisher);
     };
     const handleDownloadSelected = async (selectedTracks: string[], allTracks: TrackMetadata[], folderName?: string, isAlbum?: boolean) => {
         if (selectedTracks.length === 0) {
@@ -1068,6 +1181,7 @@ export function useDownload(region: string) {
         skippedTracks,
         currentDownloadInfo,
         handleDownloadTrack,
+        handleDownloadTrackWithSoulseek,
         handleDownloadSelected,
         handleDownloadAll,
         handleStopDownload,

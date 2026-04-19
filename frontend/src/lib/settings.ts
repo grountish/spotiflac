@@ -31,6 +31,11 @@ export interface Settings {
     createPlaylistFolder: boolean;
     playlistOwnerFolderName: boolean;
     createM3u8File: boolean;
+    enableSoulseekFallback: boolean;
+    soulseekURL: string;
+    soulseekApiKey: string;
+    soulseekDownloadPath: string;
+    soulseekSearchTimeout: number;
     useFirstArtistOnly: boolean;
     useSingleGenre: boolean;
     embedGenre: boolean;
@@ -119,6 +124,11 @@ export const DEFAULT_SETTINGS: Settings = {
     createPlaylistFolder: true,
     playlistOwnerFolderName: false,
     createM3u8File: false,
+    enableSoulseekFallback: false,
+    soulseekURL: "",
+    soulseekApiKey: "",
+    soulseekDownloadPath: "",
+    soulseekSearchTimeout: 20,
     useFirstArtistOnly: false,
     useSingleGenre: false,
     embedGenre: false,
@@ -239,6 +249,21 @@ function getSettingsFromLocalStorage(): Settings {
             if (!('playlistOwnerFolderName' in parsed)) {
                 parsed.playlistOwnerFolderName = false;
             }
+            if (!('enableSoulseekFallback' in parsed)) {
+                parsed.enableSoulseekFallback = false;
+            }
+            if (!('soulseekURL' in parsed)) {
+                parsed.soulseekURL = "";
+            }
+            if (!('soulseekApiKey' in parsed)) {
+                parsed.soulseekApiKey = "";
+            }
+            if (!('soulseekDownloadPath' in parsed)) {
+                parsed.soulseekDownloadPath = "";
+            }
+            if (!('soulseekSearchTimeout' in parsed)) {
+                parsed.soulseekSearchTimeout = 20;
+            }
             if (!('separator' in parsed)) {
                 parsed.separator = "semicolon";
             }
@@ -335,6 +360,21 @@ export async function loadSettings(): Promise<Settings> {
             }
             if (!('createM3u8File' in parsed)) {
                 parsed.createM3u8File = false;
+            }
+            if (!('enableSoulseekFallback' in parsed)) {
+                parsed.enableSoulseekFallback = false;
+            }
+            if (!('soulseekURL' in parsed)) {
+                parsed.soulseekURL = "";
+            }
+            if (!('soulseekApiKey' in parsed)) {
+                parsed.soulseekApiKey = "";
+            }
+            if (!('soulseekDownloadPath' in parsed)) {
+                parsed.soulseekDownloadPath = "";
+            }
+            if (!('soulseekSearchTimeout' in parsed)) {
+                parsed.soulseekSearchTimeout = 20;
             }
             if (!('useFirstArtistOnly' in parsed)) {
                 parsed.useFirstArtistOnly = false;
