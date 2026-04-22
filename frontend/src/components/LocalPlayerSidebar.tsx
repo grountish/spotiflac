@@ -1,9 +1,9 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { useEffect, useState } from "react";
-import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
-import { useLocalAudioPlayerProgress, type LocalAudioPlayerProgressStore, type LocalAudioTrack } from "@/hooks/useLocalAudioPlayer";
+import { useCallback, useEffect, useState } from "react";
+import { Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2, VolumeX } from "lucide-react";
+import { useLocalAudioPlayerProgress, type LocalAudioPlayerProgressStore, type LocalAudioTrack, type RepeatMode } from "@/hooks/useLocalAudioPlayer";
 
 interface LocalPlayerSidebarProps {
     collectionImageUrl?: string;
@@ -17,8 +17,14 @@ interface LocalPlayerSidebarProps {
     onPrevious: () => void | Promise<void>;
     progressStore: LocalAudioPlayerProgressStore;
     onSeek: (time: number) => void;
+    onCycleRepeat: () => void;
+    onToggleShuffle: () => void;
     onToggleTrack: (track: LocalAudioTrack) => void | Promise<void>;
+    repeatMode: RepeatMode;
+    shuffleEnabled: boolean;
     tracks: LocalAudioTrack[];
+    volume: number;
+    onVolumeChange: (volume: number) => void;
 }
 
 function formatPlaybackTime(seconds: number) {
@@ -43,8 +49,14 @@ export function LocalPlayerSidebar({
     onPrevious,
     progressStore,
     onSeek,
+    onCycleRepeat,
+    onToggleShuffle,
     onToggleTrack,
+    repeatMode,
+    shuffleEnabled,
     tracks,
+    volume,
+    onVolumeChange,
 }: LocalPlayerSidebarProps) {
     if (tracks.length === 0) {
         return null;
@@ -54,8 +66,9 @@ export function LocalPlayerSidebar({
 
     const currentTrackIndex = tracks.findIndex((track) => track.id === currentTrackId);
     const hasActiveTrack = !!currentTrack && currentTrackIndex >= 0;
-    const hasPrevious = hasActiveTrack && currentTrackIndex > 0;
-    const hasNext = hasActiveTrack && currentTrackIndex < tracks.length - 1;
+    const canWrapQueue = repeatMode === "all" && tracks.length > 1;
+    const hasPrevious = hasActiveTrack && (currentTrackIndex > 0 || canWrapQueue);
+    const hasNext = hasActiveTrack && (currentTrackIndex < tracks.length - 1 || canWrapQueue);
     const artworkUrl = currentTrack?.imageUrl || collectionImageUrl || tracks[0]?.imageUrl;
     const visibleTracks = hasActiveTrack
         ? tracks.slice(currentTrackIndex + 1, currentTrackIndex + 5)
@@ -63,12 +76,30 @@ export function LocalPlayerSidebar({
     const primaryButtonTrack = currentTrack || tracks[0];
     const [scrubTime, setScrubTime] = useState(currentTime);
     const [isScrubbing, setIsScrubbing] = useState(false);
+    const [lastNonZeroVolume, setLastNonZeroVolume] = useState(() => (volume > 0 ? volume : 1));
 
     useEffect(() => {
         if (!isScrubbing) {
             setScrubTime(currentTime);
         }
     }, [currentTime, isScrubbing]);
+
+    useEffect(() => {
+        if (volume > 0) {
+            setLastNonZeroVolume(volume);
+        }
+    }, [volume]);
+
+    const commitScrub = useCallback((nextTime?: number) => {
+        setIsScrubbing(false);
+        onSeek(nextTime ?? scrubTime);
+    }, [onSeek, scrubTime]);
+
+    const handleMuteToggle = useCallback(() => {
+        onVolumeChange(volume > 0 ? 0 : lastNonZeroVolume);
+    }, [lastNonZeroVolume, onVolumeChange, volume]);
+
+    const repeatLabel = repeatMode === "one" ? "Repeat one" : repeatMode === "all" ? "Repeat queue" : "Repeat off";
 
     return (
         <aside className="lg:sticky lg:top-6">
@@ -111,23 +142,20 @@ export function LocalPlayerSidebar({
                             <input
                                 type="range"
                                 min={0}
-                                max={duration || 0}
+                                max={Math.max(duration || 0, 0.1)}
                                 step={0.1}
                                 value={Math.min(scrubTime, duration || 0)}
-                                onMouseDown={() => setIsScrubbing(true)}
-                                onTouchStart={() => setIsScrubbing(true)}
+                                onPointerDown={() => setIsScrubbing(true)}
                                 onChange={(event) => {
                                     const nextTime = Number(event.target.value);
                                     setScrubTime(nextTime);
                                 }}
-                                onMouseUp={(event) => {
-                                    const nextTime = Number((event.target as HTMLInputElement).value);
-                                    setIsScrubbing(false);
-                                    onSeek(nextTime);
-                                }}
-                                onTouchEnd={() => {
-                                    setIsScrubbing(false);
-                                    onSeek(scrubTime);
+                                onPointerUp={(event) => commitScrub(Number((event.target as HTMLInputElement).value))}
+                                onPointerCancel={() => commitScrub()}
+                                onBlur={() => {
+                                    if (isScrubbing) {
+                                        commitScrub();
+                                    }
                                 }}
                                 onKeyUp={(event) => {
                                     const nextTime = Number((event.target as HTMLInputElement).value);
@@ -163,6 +191,55 @@ export function LocalPlayerSidebar({
                         <Button variant="outline" size="icon" onClick={() => void onNext()} disabled={!hasNext || loadingTrackId !== null}>
                             <SkipForward className="h-4 w-4" />
                         </Button>
+                    </div>
+
+                    <div className="space-y-3 rounded-xl border bg-muted/10 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                                Queue Controls
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                                {tracks.length} tracks
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant={shuffleEnabled ? "default" : "outline"}
+                                size="icon"
+                                onClick={onToggleShuffle}
+                                aria-label={shuffleEnabled ? "Disable shuffle" : "Enable shuffle"}
+                            >
+                                <Shuffle className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant={repeatMode === "off" ? "outline" : "default"}
+                                size="icon"
+                                onClick={onCycleRepeat}
+                                aria-label={repeatLabel}
+                            >
+                                {repeatMode === "one" ? <Repeat1 className="h-4 w-4" /> : <Repeat className="h-4 w-4" />}
+                            </Button>
+                            <div className="ml-auto flex min-w-0 items-center gap-2">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={handleMuteToggle}
+                                    aria-label={volume > 0 ? "Mute player" : "Restore volume"}
+                                >
+                                    {volume > 0 ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                                </Button>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={100}
+                                    step={1}
+                                    value={Math.round(volume * 100)}
+                                    onChange={(event) => onVolumeChange(Number(event.target.value) / 100)}
+                                    className="h-2 w-28 cursor-pointer appearance-none rounded-full bg-primary/20 accent-primary"
+                                    aria-label="Player volume"
+                                />
+                            </div>
+                        </div>
                     </div>
 
                     {visibleTracks.length > 0 && (

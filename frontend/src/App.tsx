@@ -807,8 +807,14 @@ function App() {
                                 onPrevious={localPlayer.playPrevious}
                                 progressStore={localPlayer.progressStore}
                                 onSeek={localPlayer.seekTo}
+                                onCycleRepeat={localPlayer.cycleRepeatMode}
+                                onToggleShuffle={localPlayer.toggleShuffle}
                                 onToggleTrack={localPlayer.toggleTrack}
-                                tracks={localPlayer.tracks}
+                                repeatMode={localPlayer.repeatMode}
+                                shuffleEnabled={localPlayer.shuffleEnabled}
+                                tracks={localPlayer.queue}
+                                volume={localPlayer.volume}
+                                onVolumeChange={localPlayer.setVolume}
                             />
                         </div>
                     )}
