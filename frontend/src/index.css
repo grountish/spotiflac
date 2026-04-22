@@ -266,3 +266,52 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   filter: brightness(1.2);
 }
+
+.spotify-seeker {
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 9999px;
+  outline: none;
+}
+
+.spotify-seeker::-webkit-slider-runnable-track {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.spotify-seeker::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-top: -0.1875rem;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0;
+}
+
+.spotify-seeker::-moz-range-track {
+  height: 0.5rem;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.spotify-seeker::-moz-range-progress {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.spotify-seeker::-moz-range-thumb {
+  width: 0.875rem;
+  height: 0.875rem;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0;
+}

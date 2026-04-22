@@ -77,6 +77,10 @@ export function LocalPlayerSidebar({
     const [scrubTime, setScrubTime] = useState(currentTime);
     const [isScrubbing, setIsScrubbing] = useState(false);
     const [lastNonZeroVolume, setLastNonZeroVolume] = useState(() => (volume > 0 ? volume : 1));
+    const displayTime = isScrubbing ? scrubTime : currentTime;
+    const seekProgressPercent = duration > 0
+        ? Math.min(Math.max((displayTime / duration) * 100, 0), 100)
+        : 0;
 
     useEffect(() => {
         if (!isScrubbing) {
@@ -161,11 +165,14 @@ export function LocalPlayerSidebar({
                                     const nextTime = Number((event.target as HTMLInputElement).value);
                                     onSeek(nextTime);
                                 }}
-                                className="h-2 w-full cursor-pointer appearance-none rounded-full bg-primary/20 accent-primary"
+                                className="spotify-seeker h-2 w-full cursor-pointer"
+                                style={{
+                                    background: `linear-gradient(to right, var(--primary) 0%, var(--primary) ${seekProgressPercent}%, color-mix(in oklab, var(--primary) 24%, transparent) ${seekProgressPercent}%, color-mix(in oklab, var(--primary) 24%, transparent) 100%)`,
+                                }}
                                 aria-label="Seek playback position"
                             />
                             <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
-                                <span>{formatPlaybackTime(isScrubbing ? scrubTime : currentTime)}</span>
+                                <span>{formatPlaybackTime(displayTime)}</span>
                                 <span>{formatPlaybackTime(duration)}</span>
                             </div>
                         </div>
