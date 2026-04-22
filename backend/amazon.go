@@ -48,6 +48,47 @@ func (a *AmazonDownloader) GetAmazonURLFromSpotify(spotifyTrackID string) (strin
 	return amazonURL, nil
 }
 
+func (a *AmazonDownloader) ProbeDownloadURL(amazonURL string) error {
+	asinRegex := regexp.MustCompile(`(B[0-9A-Z]{9})`)
+	asin := asinRegex.FindString(amazonURL)
+	if asin == "" {
+		return fmt.Errorf("failed to extract ASIN from URL: %s", amazonURL)
+	}
+
+	apiURL := fmt.Sprintf("https://amzn.afkarxyz.qzz.io/api/track/%s", asin)
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("Amazon API returned status %d", resp.StatusCode)
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	var apiResp AmazonStreamResponse
+	if err := json.Unmarshal(bodyBytes, &apiResp); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if strings.TrimSpace(apiResp.StreamURL) == "" {
+		return fmt.Errorf("no stream URL found in response")
+	}
+
+	return nil
+}
+
 func (a *AmazonDownloader) DownloadFromAfkarXYZ(amazonURL, outputDir, quality string) (string, error) {
 
 	asinRegex := regexp.MustCompile(`(B[0-9A-Z]{9})`)

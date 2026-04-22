@@ -39,6 +39,9 @@ type TrackAvailability struct {
 	AmazonURL string `json:"amazon_url,omitempty"`
 	QobuzURL  string `json:"qobuz_url,omitempty"`
 	DeezerURL string `json:"deezer_url,omitempty"`
+	TidalError  string `json:"tidal_error,omitempty"`
+	AmazonError string `json:"amazon_error,omitempty"`
+	QobuzError  string `json:"qobuz_error,omitempty"`
 }
 
 type songLinkAPIResponse struct {
@@ -99,8 +102,6 @@ func (s *SongLinkClient) CheckTrackAvailability(spotifyTrackID string) (*TrackAv
 		availability.TidalURL = links.TidalURL
 		availability.AmazonURL = normalizeAmazonMusicURL(links.AmazonURL)
 		availability.DeezerURL = normalizeDeezerTrackURL(links.DeezerURL)
-		availability.Tidal = availability.TidalURL != ""
-		availability.Amazon = availability.AmazonURL != ""
 		availability.Deezer = availability.DeezerURL != ""
 	}
 
@@ -124,7 +125,51 @@ func (s *SongLinkClient) CheckTrackAvailability(spotifyTrackID string) (*TrackAv
 	}
 
 	if isrc != "" {
-		availability.Qobuz, availability.QobuzURL = checkQobuzAvailability(isrc)
+		_, availability.QobuzURL = checkQobuzAvailability(isrc)
+	}
+
+	if availability.TidalURL != "" {
+		tidalDownloader := NewTidalDownloader("")
+		trackID, trackErr := tidalDownloader.GetTrackIDFromURL(availability.TidalURL)
+		if trackErr != nil {
+			availability.TidalError = trackErr.Error()
+		} else {
+			tidalQuality := GetTidalQualitySetting()
+			if _, probeErr := tidalDownloader.GetDownloadURL(trackID, tidalQuality); probeErr == nil {
+				availability.Tidal = true
+			} else if GetAllowLossyFallbackSetting() && tidalQuality == "HI_RES_LOSSLESS" {
+				if _, fallbackErr := tidalDownloader.GetDownloadURL(trackID, "LOSSLESS"); fallbackErr == nil {
+					availability.Tidal = true
+				} else {
+					availability.TidalError = fallbackErr.Error()
+				}
+			} else {
+				availability.TidalError = probeErr.Error()
+			}
+		}
+	}
+
+	if availability.AmazonURL != "" {
+		amazonDownloader := NewAmazonDownloader()
+		if probeErr := amazonDownloader.ProbeDownloadURL(availability.AmazonURL); probeErr == nil {
+			availability.Amazon = true
+		} else {
+			availability.AmazonError = probeErr.Error()
+		}
+	}
+
+	if isrc != "" {
+		qobuzDownloader := NewQobuzDownloader()
+		track, searchErr := qobuzDownloader.searchByISRC(isrc)
+		if searchErr == nil {
+			if _, probeErr := qobuzDownloader.GetDownloadURL(track.ID, GetQobuzQualitySetting(), GetAllowFallbackSetting()); probeErr == nil {
+				availability.Qobuz = true
+			} else {
+				availability.QobuzError = probeErr.Error()
+			}
+		} else {
+			availability.QobuzError = searchErr.Error()
+		}
 	}
 
 	if availability.Tidal || availability.Amazon || availability.Deezer || availability.Qobuz {

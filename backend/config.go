@@ -70,6 +70,56 @@ func GetAllowLossyFallbackSetting() bool {
 	return enabled
 }
 
+func GetAllowFallbackSetting() bool {
+	settings, err := LoadConfigSettings()
+	if err != nil || settings == nil {
+		return true
+	}
+
+	enabled, ok := settings["allowFallback"].(bool)
+	if !ok {
+		return true
+	}
+
+	return enabled
+}
+
+func GetTidalQualitySetting() string {
+	settings, err := LoadConfigSettings()
+	if err != nil || settings == nil {
+		return "LOSSLESS"
+	}
+
+	quality, _ := settings["tidalQuality"].(string)
+	switch strings.TrimSpace(strings.ToUpper(quality)) {
+	case "HI_RES_LOSSLESS":
+		return "HI_RES_LOSSLESS"
+	case "LOSSLESS":
+		return "LOSSLESS"
+	default:
+		return "LOSSLESS"
+	}
+}
+
+func GetQobuzQualitySetting() string {
+	settings, err := LoadConfigSettings()
+	if err != nil || settings == nil {
+		return "6"
+	}
+
+	quality, _ := settings["qobuzQuality"].(string)
+	switch strings.TrimSpace(quality) {
+	case "27":
+		return "27"
+	case "7":
+		return "7"
+	case "6":
+		return "6"
+	default:
+		return "6"
+	}
+}
+
 func GetLinkResolverSetting() string {
 	settings, err := LoadConfigSettings()
 	if err != nil || settings == nil {

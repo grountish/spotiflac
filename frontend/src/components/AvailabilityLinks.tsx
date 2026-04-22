@@ -6,6 +6,7 @@ interface AvailabilityLinkEntry {
     id: string;
     found: boolean;
     url?: string;
+    error?: string;
     icon: ReactNode;
 }
 function getAvailabilityLinkEntries(availability: TrackAvailability): AvailabilityLinkEntry[] {
@@ -15,21 +16,24 @@ function getAvailabilityLinkEntries(availability: TrackAvailability): Availabili
     return [
         {
             id: "tidal",
-            found: tidalUrl !== "",
+            found: availability.tidal,
             url: tidalUrl,
-            icon: <TidalAvailabilityIcon className={`w-4 h-4 shrink-0 ${tidalUrl ? "text-green-500" : "text-red-500"}`}/>,
+            error: availability.tidal_error?.trim() || "",
+            icon: <TidalAvailabilityIcon className={`w-4 h-4 shrink-0 ${availability.tidal ? "text-green-500" : "text-red-500"}`}/>,
         },
         {
             id: "qobuz",
-            found: qobuzUrl !== "",
+            found: availability.qobuz,
             url: qobuzUrl,
-            icon: <QobuzAvailabilityIcon className={`w-4 h-4 shrink-0 ${qobuzUrl ? "text-green-500" : "text-red-500"}`}/>,
+            error: availability.qobuz_error?.trim() || "",
+            icon: <QobuzAvailabilityIcon className={`w-4 h-4 shrink-0 ${availability.qobuz ? "text-green-500" : "text-red-500"}`}/>,
         },
         {
             id: "amazon",
-            found: amazonUrl !== "",
+            found: availability.amazon,
             url: amazonUrl,
-            icon: <AmazonAvailabilityIcon className={`w-4 h-4 shrink-0 ${amazonUrl ? "text-green-500" : "text-red-500"}`}/>,
+            error: availability.amazon_error?.trim() || "",
+            icon: <AmazonAvailabilityIcon className={`w-4 h-4 shrink-0 ${availability.amazon ? "text-green-500" : "text-red-500"}`}/>,
         },
     ];
 }
@@ -54,8 +58,8 @@ export function AvailabilityLinks({ availability }: {
                     </span>
                 </button>) : (<div key={entry.id} className="flex items-center gap-2 text-left text-xs min-w-0">
                     {entry.icon}
-                    <span className="truncate whitespace-nowrap leading-5 min-w-0 text-red-500">
-                        Not Found
+                    <span className="truncate whitespace-nowrap leading-5 min-w-0 text-red-500" title={entry.error || undefined}>
+                        {entry.error || "Not downloadable"}
                     </span>
                 </div>))}
         </div>);

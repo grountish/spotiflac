@@ -223,6 +223,9 @@ export interface TrackAvailability {
     tidal_url?: string;
     amazon_url?: string;
     qobuz_url?: string;
+    tidal_error?: string;
+    amazon_error?: string;
+    qobuz_error?: string;
 }
 export interface CoverDownloadRequest {
     cover_url: string;
