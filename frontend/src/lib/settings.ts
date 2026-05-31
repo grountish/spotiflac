@@ -4,7 +4,7 @@ export type FolderPreset = "none" | "artist" | "album" | "year-album" | "year-ar
 export type FilenamePreset = "title" | "title-artist" | "artist-title" | "track-title" | "track-title-artist" | "track-artist-title" | "title-album-artist" | "track-title-album-artist" | "artist-album-title" | "track-dash-title" | "disc-track-title" | "disc-track-title-artist" | "custom";
 export interface Settings {
     downloadPath: string;
-    downloader: "auto" | "tidal" | "qobuz" | "amazon";
+    downloader: "auto" | "tidal" | "qobuz" | "amazon" | "slskd";
     linkResolver: "songstats" | "songlink";
     allowResolverFallback: boolean;
     theme: string;
@@ -31,6 +31,10 @@ export interface Settings {
     autoQuality: "16" | "24";
     allowFallback: boolean;
     allowLossyFallback: boolean;
+    slskdFallbackEnabled: boolean;
+    slskdURL: string;
+    slskdAPIKey: string;
+    slskdDownloadsDir: string;
     createPlaylistFolder: boolean;
     playlistOwnerFolderName: boolean;
     createM3u8File: boolean;
@@ -122,6 +126,10 @@ export const DEFAULT_SETTINGS: Settings = {
     autoQuality: "16",
     allowFallback: true,
     allowLossyFallback: false,
+    slskdFallbackEnabled: false,
+    slskdURL: "http://localhost:5030",
+    slskdAPIKey: "",
+    slskdDownloadsDir: "",
     createPlaylistFolder: true,
     playlistOwnerFolderName: false,
     createM3u8File: false,
@@ -245,6 +253,18 @@ function getSettingsFromLocalStorage(): Settings {
             if (!('allowLossyFallback' in parsed)) {
                 parsed.allowLossyFallback = false;
             }
+            if (!('slskdFallbackEnabled' in parsed)) {
+                parsed.slskdFallbackEnabled = false;
+            }
+            if (!('slskdURL' in parsed)) {
+                parsed.slskdURL = "http://localhost:5030";
+            }
+            if (!('slskdAPIKey' in parsed)) {
+                parsed.slskdAPIKey = "";
+            }
+            if (!('slskdDownloadsDir' in parsed)) {
+                parsed.slskdDownloadsDir = "";
+            }
             if (!('linkResolver' in parsed)) {
                 parsed.linkResolver = "songlink";
             }
@@ -344,6 +364,18 @@ export async function loadSettings(): Promise<Settings> {
             }
             if (!('allowLossyFallback' in parsed)) {
                 parsed.allowLossyFallback = false;
+            }
+            if (!('slskdFallbackEnabled' in parsed)) {
+                parsed.slskdFallbackEnabled = false;
+            }
+            if (!('slskdURL' in parsed)) {
+                parsed.slskdURL = "http://localhost:5030";
+            }
+            if (!('slskdAPIKey' in parsed)) {
+                parsed.slskdAPIKey = "";
+            }
+            if (!('slskdDownloadsDir' in parsed)) {
+                parsed.slskdDownloadsDir = "";
             }
             if (!('linkResolver' in parsed)) {
                 parsed.linkResolver = "songlink";

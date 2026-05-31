@@ -37,6 +37,13 @@ type CurrentIPInfo struct {
 	Source      string `json:"source,omitempty"`
 }
 
+type APIStatusDetail struct {
+	Online     bool   `json:"online"`
+	CheckedURL string `json:"checked_url,omitempty"`
+	Message    string `json:"message,omitempty"`
+	StatusCode int    `json:"status_code,omitempty"`
+}
+
 const checkOperationTimeout = 10 * time.Second
 const unifiedStatusAPIURL = "https://api-status.afkarxyz.qzz.io/api/status/spotiflac/"
 const unifiedStatusCacheTTL = 5 * time.Second
@@ -360,6 +367,7 @@ func (a *App) startAudioServer() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/audio", func(w http.ResponseWriter, r *http.Request) {
 		filePath := strings.TrimSpace(r.URL.Query().Get("path"))
+		appendPlaybackDebugLog("backend:audio-request", filePath, r.Method)
 		if filePath == "" {
 			http.Error(w, "missing audio path", http.StatusBadRequest)
 			return
@@ -389,8 +397,10 @@ func (a *App) startAudioServer() {
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
+
 		w.Header().Set("Accept-Ranges", "bytes")
 		w.Header().Set("Content-Type", getAudioMimeType(filePath))
+		appendPlaybackDebugLog("backend:audio-serve", filePath, getAudioMimeType(filePath))
 		http.ServeContent(w, r, filepath.Base(filePath), info.ModTime(), file)
 	})
 
@@ -478,12 +488,16 @@ type DownloadRequest struct {
 }
 
 type DownloadResponse struct {
-	Success       bool   `json:"success"`
-	Message       string `json:"message"`
-	File          string `json:"file,omitempty"`
-	Error         string `json:"error,omitempty"`
-	AlreadyExists bool   `json:"already_exists,omitempty"`
-	ItemID        string `json:"item_id,omitempty"`
+	Success           bool   `json:"success"`
+	Message           string `json:"message"`
+	File              string `json:"file,omitempty"`
+	Error             string `json:"error,omitempty"`
+	AlreadyExists     bool   `json:"already_exists,omitempty"`
+	ItemID            string `json:"item_id,omitempty"`
+	ActualFormat      string `json:"actual_format,omitempty"`
+	ActualBitrateKbps int    `json:"actual_bitrate_kbps,omitempty"`
+	QualityNotice     string `json:"quality_notice,omitempty"`
+	LossyFallbackUsed bool   `json:"lossy_fallback_used,omitempty"`
 }
 
 func cleanupInvalidDownloadArtifacts(paths ...string) {
@@ -500,6 +514,56 @@ func cleanupInvalidDownloadArtifacts(paths ...string) {
 			fmt.Printf("Removed invalid download artifact: %s\n", path)
 		}
 	}
+}
+
+func isLossyAudioExtension(ext string) bool {
+	switch strings.ToLower(strings.TrimSpace(ext)) {
+	case ".mp3", ".m4a", ".aac":
+		return true
+	default:
+		return false
+	}
+}
+
+func isRequestedLosslessFormat(audioFormat string) bool {
+	switch strings.ToLower(strings.TrimSpace(audioFormat)) {
+	case "", "flac", "lossless", "hi_res_lossless", "hi_res", "6", "7", "27":
+		return true
+	default:
+		return false
+	}
+}
+
+func classifyDownloadOutcome(req DownloadRequest, filename string) (string, int, string, bool) {
+	ext := strings.ToLower(filepath.Ext(filename))
+	if ext == "" {
+		return "", 0, "", false
+	}
+
+	actualFormat := strings.ToUpper(strings.TrimPrefix(ext, "."))
+	actualBitrateKbps := 0
+	if meta, err := backend.GetTrackMetadata(filename); err == nil && meta != nil && meta.Bitrate > 0 {
+		actualBitrateKbps = meta.Bitrate / 1000
+	}
+
+	if !isLossyAudioExtension(ext) {
+		return actualFormat, actualBitrateKbps, "", false
+	}
+
+	if !isRequestedLosslessFormat(req.AudioFormat) &&
+		!strings.EqualFold(req.AudioFormat, "original") &&
+		!strings.EqualFold(req.AudioFormat, "any") &&
+		!strings.EqualFold(req.AudioFormat, "best_available") {
+		return actualFormat, actualBitrateKbps, "", false
+	}
+
+	notice := fmt.Sprintf("Download completed with lossy fallback (%s", actualFormat)
+	if actualBitrateKbps > 0 {
+		notice += fmt.Sprintf(" %d kbps", actualBitrateKbps)
+	}
+	notice += ")"
+
+	return actualFormat, actualBitrateKbps, notice, true
 }
 
 func (a *App) GetStreamingURLs(spotifyTrackID string, region string) (string, error) {
@@ -830,6 +894,14 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 		}
 		filename, err = downloader.DownloadTrackWithISRC(isrc, req.OutputDir, quality, req.FilenameFormat, req.TrackNumber, req.Position, req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, req.UseAlbumTrackNumber, req.CoverURL, req.EmbedMaxQualityCover, req.SpotifyTrackNumber, req.SpotifyDiscNumber, req.SpotifyTotalTracks, req.SpotifyTotalDiscs, req.Copyright, req.Publisher, req.Composer, metadataSeparator, spotifyURL, req.AllowFallback, req.UseFirstArtistOnly, req.UseSingleGenre, req.EmbedGenre)
 
+	case "slskd":
+		downloader, newErr := backend.NewSlskdDownloader()
+		if newErr != nil {
+			err = newErr
+			break
+		}
+		filename, err = downloader.Download(req.Query, req.OutputDir, req.AudioFormat, req.FilenameFormat, req.PlaylistName, req.PlaylistOwner, req.TrackNumber, req.Position, req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, req.CoverURL, req.SpotifyTrackNumber, req.SpotifyDiscNumber, req.SpotifyTotalTracks, req.EmbedMaxQualityCover, req.SpotifyTotalDiscs, req.Copyright, req.Publisher, req.Composer, metadataSeparator, req.ISRC, spotifyURL, req.Duration, req.UseFirstArtistOnly, req.UseSingleGenre, req.EmbedGenre)
+
 	default:
 		return DownloadResponse{
 			Success: false,
@@ -907,6 +979,10 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 	}
 
 	message := "Download completed successfully"
+	actualFormat := ""
+	actualBitrateKbps := 0
+	qualityNotice := ""
+	lossyFallbackUsed := false
 	if alreadyExists {
 		message = "File already exists"
 		backend.SkipDownloadItem(itemID, filename)
@@ -927,6 +1003,8 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 
 			backend.CompleteDownloadItem(itemID, filename, 0)
 		}
+
+		actualFormat, actualBitrateKbps, qualityNotice, lossyFallbackUsed = classifyDownloadOutcome(req, filename)
 
 		go func(fPath, track, artist, album, sID, cover, format, source string) {
 			time.Sleep(2 * time.Second)
@@ -977,11 +1055,15 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 	}
 
 	return DownloadResponse{
-		Success:       true,
-		Message:       message,
-		File:          filename,
-		AlreadyExists: alreadyExists,
-		ItemID:        itemID,
+		Success:           true,
+		Message:           message,
+		File:              filename,
+		AlreadyExists:     alreadyExists,
+		ItemID:            itemID,
+		ActualFormat:      actualFormat,
+		ActualBitrateKbps: actualBitrateKbps,
+		QualityNotice:     qualityNotice,
+		LossyFallbackUsed: lossyFallbackUsed,
 	}, nil
 }
 
@@ -1118,86 +1200,152 @@ func (a *App) ExportFailedDownloads() (string, error) {
 	return fmt.Sprintf("Successfully exported %d failed downloads to %s", count, path), nil
 }
 
-func (a *App) CheckAPIStatus(apiType string, apiURL string) bool {
-	isOnline, err := runWithTimeout(checkOperationTimeout, func() (bool, error) {
-		var checkURL string
-		if apiType == "tidal" {
-			checkURL = fmt.Sprintf("%s/track/?id=441821360&quality=HI_RES_LOSSLESS", apiURL)
-		} else if apiType == "qobuz" {
-			checkURL = fmt.Sprintf("%s/api/stream?trackId=360735657&quality=27", apiURL)
-		} else if apiType == "qbz" {
-			checkURL = fmt.Sprintf("%s/api/track/360735657?quality=27", apiURL)
-		} else if apiType == "amazon" {
-			checkURL = fmt.Sprintf("%s/status", apiURL)
-		} else if apiType == "lrclib" {
-			checkURL = fmt.Sprintf("%s/api/search?artist_name=Adele&track_name=Hello", strings.TrimRight(apiURL, "/"))
-		} else if apiType == "musicbrainz" {
-			checkURL = fmt.Sprintf("%s/ws/2/recording?query=%s&fmt=json&limit=1", strings.TrimRight(apiURL, "/"), url.QueryEscape(`recording:"Hello" AND artist:"Adele"`))
-		} else {
-			checkURL = apiURL
-		}
+func buildAPIStatusCheckURL(apiType string, apiURL string) string {
+	switch apiType {
+	case "tidal":
+		return fmt.Sprintf("%s/track/?id=441821360&quality=HI_RES_LOSSLESS", apiURL)
+	case "qobuz":
+		return fmt.Sprintf("%s/api/stream?trackId=360735657&quality=27", apiURL)
+	case "qbz":
+		return fmt.Sprintf("%s/api/track/360735657?quality=27", apiURL)
+	case "amazon":
+		return fmt.Sprintf("%s/status", apiURL)
+	case "lrclib":
+		return fmt.Sprintf("%s/api/search?artist_name=Adele&track_name=Hello", strings.TrimRight(apiURL, "/"))
+	case "musicbrainz":
+		return fmt.Sprintf("%s/ws/2/recording?query=%s&fmt=json&limit=1", strings.TrimRight(apiURL, "/"), url.QueryEscape(`recording:"Hello" AND artist:"Adele"`))
+	default:
+		return apiURL
+	}
+}
 
+func probeAPIStatus(apiType string, apiURL string) APIStatusDetail {
+	checkURL := buildAPIStatusCheckURL(apiType, apiURL)
+	detail := APIStatusDetail{
+		Online:     false,
+		CheckedURL: checkURL,
+	}
+
+	checkedDetail, err := runWithTimeout(checkOperationTimeout, func() (APIStatusDetail, error) {
 		client := &http.Client{Timeout: 10 * time.Second}
-		req, err := http.NewRequest("GET", checkURL, nil)
-		if err != nil {
-			return false, err
-		}
-		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")
-		req.Header.Set("Accept", "application/json")
-
 		maxRetries := 3
+		lastDetail := detail
+
 		for i := 0; i < maxRetries; i++ {
+			req, err := http.NewRequest(http.MethodGet, checkURL, nil)
+			if err != nil {
+				return lastDetail, err
+			}
+			req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")
+			req.Header.Set("Accept", "application/json")
+
 			resp, err := client.Do(req)
-			if err == nil {
-				statusCode := resp.StatusCode
-				body, readErr := io.ReadAll(resp.Body)
-				resp.Body.Close()
-				if readErr != nil {
-					if i < maxRetries-1 {
-						time.Sleep(1 * time.Second)
-					}
-					continue
+			if err != nil {
+				lastDetail.Message = err.Error()
+				if i < maxRetries-1 {
+					time.Sleep(1 * time.Second)
 				}
+				continue
+			}
 
-				if apiType == "amazon" && statusCode == 200 && strings.Contains(string(body), `"amazonMusic":"up"`) {
-					return true, nil
+			statusCode := resp.StatusCode
+			body, readErr := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if readErr != nil {
+				lastDetail.Message = fmt.Sprintf("failed reading response: %v", readErr)
+				lastDetail.StatusCode = statusCode
+				if i < maxRetries-1 {
+					time.Sleep(1 * time.Second)
 				}
+				continue
+			}
 
-				if (apiType == "qobuz" || apiType == "qbz") && statusCode == 200 && containsStreamingURL(body) {
-					return true, nil
+			lastDetail.StatusCode = statusCode
+			bodyPreview := previewResponseBody(body, 200)
+
+			switch apiType {
+			case "amazon":
+				if statusCode == http.StatusOK && strings.Contains(string(body), `"amazonMusic":"up"`) {
+					lastDetail.Online = true
+					lastDetail.Message = "status endpoint reports amazonMusic up"
+					return lastDetail, nil
 				}
-
-				if apiType == "lrclib" && statusCode == 200 && containsLRCLIBResults(body) {
-					return true, nil
+				lastDetail.Message = fmt.Sprintf("HTTP %d: amazonMusic not marked up", statusCode)
+			case "qobuz", "qbz":
+				if statusCode == http.StatusOK && containsStreamingURL(body) {
+					lastDetail.Online = true
+					lastDetail.Message = "stream probe returned a valid URL"
+					return lastDetail, nil
 				}
-
-				if apiType == "musicbrainz" && statusCode == 200 && containsMusicBrainzResults(body) {
-					return true, nil
+				if bodyPreview == "" {
+					lastDetail.Message = fmt.Sprintf("HTTP %d: no streaming URL in response", statusCode)
+				} else {
+					lastDetail.Message = fmt.Sprintf("HTTP %d: %s", statusCode, bodyPreview)
 				}
-
-				if apiType != "amazon" && apiType != "qobuz" && apiType != "qbz" && apiType != "lrclib" && apiType != "musicbrainz" && statusCode == 200 {
-					return true, nil
+			case "lrclib":
+				if statusCode == http.StatusOK && containsLRCLIBResults(body) {
+					lastDetail.Online = true
+					lastDetail.Message = "lyrics search returned results"
+					return lastDetail, nil
+				}
+				if bodyPreview == "" {
+					lastDetail.Message = fmt.Sprintf("HTTP %d: no lyrics found", statusCode)
+				} else {
+					lastDetail.Message = fmt.Sprintf("HTTP %d: %s", statusCode, bodyPreview)
+				}
+			case "musicbrainz":
+				if statusCode == http.StatusOK && containsMusicBrainzResults(body) {
+					lastDetail.Online = true
+					lastDetail.Message = "recording search returned results"
+					return lastDetail, nil
+				}
+				if bodyPreview == "" {
+					lastDetail.Message = fmt.Sprintf("HTTP %d: no recording results", statusCode)
+				} else {
+					lastDetail.Message = fmt.Sprintf("HTTP %d: %s", statusCode, bodyPreview)
+				}
+			default:
+				if statusCode == http.StatusOK {
+					lastDetail.Online = true
+					lastDetail.Message = "probe returned HTTP 200"
+					return lastDetail, nil
+				}
+				if bodyPreview == "" {
+					lastDetail.Message = fmt.Sprintf("HTTP %d", statusCode)
+				} else {
+					lastDetail.Message = fmt.Sprintf("HTTP %d: %s", statusCode, bodyPreview)
 				}
 			}
+
 			if i < maxRetries-1 {
 				time.Sleep(1 * time.Second)
 			}
 		}
-		return false, nil
+
+		return lastDetail, nil
 	})
 	if err != nil {
+		detail.Message = err.Error()
 		if apiType == "musicbrainz" {
 			backend.SetMusicBrainzStatusCheckResult(false)
 		}
 		fmt.Printf("CheckAPIStatus timeout/error for %s (%s): %v\n", apiType, apiURL, err)
-		return false
+		return detail
 	}
 
 	if apiType == "musicbrainz" {
-		backend.SetMusicBrainzStatusCheckResult(isOnline)
+		backend.SetMusicBrainzStatusCheckResult(checkedDetail.Online)
 	}
 
-	return isOnline
+	return checkedDetail
+}
+
+func (a *App) CheckAPIStatusDetailed(apiType string, apiURL string) APIStatusDetail {
+	return probeAPIStatus(apiType, apiURL)
+}
+
+func (a *App) CheckAPIStatus(apiType string, apiURL string) bool {
+	return probeAPIStatus(apiType, apiURL).Online
 }
 
 func (a *App) Quit() {
@@ -1728,6 +1876,31 @@ func (a *App) ReadAudioFileAsDataURL(filePath string) (string, error) {
 	return fmt.Sprintf("data:%s;base64,%s", mimeType, encoded), nil
 }
 
+func appendPlaybackDebugLog(event, filePath, detail string) {
+	appDir, err := backend.EnsureAppDir()
+	if err != nil {
+		fmt.Printf("[Playback] Failed to resolve app dir for debug log: %v\n", err)
+		return
+	}
+
+	logPath := filepath.Join(appDir, "playback-debug.log")
+	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		fmt.Printf("[Playback] Failed to open debug log: %v\n", err)
+		return
+	}
+	defer logFile.Close()
+
+	line := fmt.Sprintf("%s | %s | %s | %s\n", time.Now().Format(time.RFC3339Nano), event, filePath, detail)
+	if _, err := logFile.WriteString(line); err != nil {
+		fmt.Printf("[Playback] Failed to write debug log: %v\n", err)
+	}
+}
+
+func (a *App) RecordPlaybackBreadcrumb(event string, filePath string, detail string) {
+	appendPlaybackDebugLog(strings.TrimSpace(event), strings.TrimSpace(filePath), strings.TrimSpace(detail))
+}
+
 func (a *App) GetAudioPlaybackURL(filePath string) (string, error) {
 	if filePath == "" {
 		return "", fmt.Errorf("file path is required")
@@ -1737,10 +1910,17 @@ func (a *App) GetAudioPlaybackURL(filePath string) (string, error) {
 		return "", fmt.Errorf("local audio server is not available")
 	}
 
-	if _, err := os.Stat(filePath); err != nil {
+	info, err := os.Stat(filePath)
+	if err != nil {
 		return "", err
 	}
+	if info.IsDir() {
+		return "", fmt.Errorf("audio path is a directory")
+	}
 
+	detail := fmt.Sprintf("size=%d mime=%s", info.Size(), getAudioMimeType(filePath))
+	appendPlaybackDebugLog("backend:get-audio-playback-url", filePath, detail)
+	fmt.Printf("[Playback] Serving FLAC-first audio path: %s (%s)\n", filePath, detail)
 	return fmt.Sprintf("%s/audio?path=%s", a.audioServerBaseURL, url.QueryEscape(filePath)), nil
 }
 

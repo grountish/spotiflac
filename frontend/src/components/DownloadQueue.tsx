@@ -12,6 +12,11 @@ interface DownloadQueueProps {
     isOpen: boolean;
     onClose: () => void;
 }
+
+async function resolvePlaybackSource(filePath: string): Promise<string> {
+    return await GetAudioPlaybackURL(filePath);
+}
+
 export function DownloadQueue({ isOpen, onClose }: DownloadQueueProps) {
     const [queueInfo, setQueueInfo] = useState<backend.DownloadQueueInfo>(new backend.DownloadQueueInfo({
         is_downloading: false,
@@ -49,7 +54,7 @@ export function DownloadQueue({ isOpen, onClose }: DownloadQueueProps) {
         filePath: item.file_path,
     })), [queueInfo.queue]);
     const { currentTrack, currentTrackId, isPlaying, loadingTrackId, playNext, playPrevious, progressStore, setTrackList, stopPlayback, toggleTrack, } = useLocalAudioPlayer({
-        resolveSource: GetAudioPlaybackURL,
+        resolveSource: resolvePlaybackSource,
     });
     const { currentTime, duration } = useLocalAudioPlayerProgress(progressStore);
     useEffect(() => {

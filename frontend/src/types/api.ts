@@ -111,7 +111,7 @@ export interface ArtistResponse {
 }
 export type SpotifyMetadataResponse = TrackResponse | AlbumResponse | PlaylistResponse | ArtistDiscographyResponse | ArtistResponse;
 export interface DownloadRequest {
-    service: "tidal" | "qobuz" | "amazon";
+    service: "tidal" | "qobuz" | "amazon" | "slskd";
     query?: string;
     track_name?: string;
     artist_name?: string;
@@ -141,6 +141,7 @@ export interface DownloadRequest {
     copyright?: string;
     publisher?: string;
     spotify_url?: string;
+    allow_fallback?: boolean;
     use_first_artist_only?: boolean;
     use_single_genre?: boolean;
     embed_genre?: boolean;
@@ -152,6 +153,10 @@ export interface DownloadResponse {
     error?: string;
     already_exists?: boolean;
     item_id?: string;
+    actual_format?: string;
+    actual_bitrate_kbps?: number;
+    quality_notice?: string;
+    lossy_fallback_used?: boolean;
 }
 export interface HealthResponse {
     status: string;

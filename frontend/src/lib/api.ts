@@ -16,7 +16,17 @@ export async function downloadTrack(request: DownloadRequest): Promise<DownloadR
     if (request.use_single_genre !== undefined) {
         (req as any).use_single_genre = request.use_single_genre;
     }
-    return await DownloadTrack(req);
+    try {
+        return await DownloadTrack(req);
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+            success: false,
+            message: "",
+            error: message || "Download failed",
+        };
+    }
 }
 export async function checkHealth(): Promise<HealthResponse> {
     return {

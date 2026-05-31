@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { getSettings, type Settings } from "@/lib/settings";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
+import { logger } from "@/lib/logger";
 
 export interface LocalAudioTrack {
     id: string;
@@ -31,6 +32,14 @@ const CROSSFADE_STEP_INTERVAL_MS = 100;
 const PLAYER_VOLUME_KEY = "spotiflac-local-player-volume";
 const PLAYER_REPEAT_KEY = "spotiflac-local-player-repeat";
 const PLAYER_SHUFFLE_KEY = "spotiflac-local-player-shuffle";
+
+async function recordPlaybackBreadcrumb(event: string, filePath: string, detail: string = ""): Promise<void> {
+    try {
+        await (window as any)["go"]["main"]["App"]["RecordPlaybackBreadcrumb"](event, filePath, detail);
+    }
+    catch {
+    }
+}
 
 function disposeAudio(audio: HTMLAudioElement | null) {
     if (!audio) {
@@ -321,20 +330,28 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
         }, true);
 
         try {
+            void recordPlaybackBreadcrumb("frontend:resolve-source:start", nextTrack.filePath, nextTrack.title);
+            logger.info(`playback: resolving source for "${nextTrack.title}"`);
             const src = await resolveSource(nextTrack.filePath);
             if (requestToken !== requestTokenRef.current) {
                 return;
             }
+            void recordPlaybackBreadcrumb("frontend:resolve-source:done", nextTrack.filePath, src.startsWith("http") ? "http-url" : "data-url");
+            logger.info(`playback: source resolved for "${nextTrack.title}"`);
 
             const audio = new Audio();
             audio.preload = "none";
+            void recordPlaybackBreadcrumb("frontend:audio:create", nextTrack.filePath, nextTrack.title);
             audio.src = src;
+            void recordPlaybackBreadcrumb("frontend:audio:src-set", nextTrack.filePath, `${src.startsWith("http") ? "http-url" : "data-url"} len=${src.length}`);
             audioRef.current = audio;
 
             audio.onloadedmetadata = () => {
                 if (requestToken !== requestTokenRef.current || audio !== audioRef.current) {
                     return;
                 }
+                void recordPlaybackBreadcrumb("frontend:audio:loadedmetadata", nextTrack.filePath, `duration=${audio.duration}`);
+                logger.info(`playback: metadata loaded for "${nextTrack.title}"`);
 
                 updateProgress({
                     currentTime: audio.currentTime || 0,
@@ -383,6 +400,8 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
                 if (requestToken !== requestTokenRef.current || audio !== audioRef.current) {
                     return;
                 }
+                void recordPlaybackBreadcrumb("frontend:audio:error", nextTrack.filePath, nextTrack.title);
+                logger.error(`playback: audio element error for "${nextTrack.title}"`);
 
                 toast.error("Failed to play downloaded track", {
                     description: `Could not load "${nextTrack.title}" from disk.`,
@@ -410,12 +429,18 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
             };
 
             applyOutputVolumes();
+            void recordPlaybackBreadcrumb("frontend:audio:play-call", nextTrack.filePath, nextTrack.title);
+            logger.info(`playback: starting audio playback for "${nextTrack.title}"`);
             await audio.play();
+            void recordPlaybackBreadcrumb("frontend:audio:play-resolved", nextTrack.filePath, nextTrack.title);
+            logger.info(`playback: audio.play() resolved for "${nextTrack.title}"`);
         }
         catch (error: any) {
             if (requestToken !== requestTokenRef.current) {
                 return;
             }
+            void recordPlaybackBreadcrumb("frontend:audio:catch", nextTrack.filePath, error?.message || String(error));
+            logger.error(`playback: failed for "${nextTrack.title}" - ${error?.message || String(error)}`);
 
             toast.error("Failed to play downloaded track", {
                 description: error?.message || `Could not load "${nextTrack.title}" from disk.`,

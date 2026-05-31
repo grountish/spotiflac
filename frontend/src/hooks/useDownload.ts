@@ -4,7 +4,7 @@ import { getSettings, parseTemplate, type TemplateData } from "@/lib/settings";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import { joinPath, sanitizePath, getFirstArtist } from "@/lib/utils";
 import { logger } from "@/lib/logger";
-import type { TrackMetadata } from "@/types/api";
+import type { DownloadResponse, TrackMetadata } from "@/types/api";
 interface CheckFileExistenceRequest {
     spotify_id: string;
     track_name: string;
@@ -59,6 +59,21 @@ function getPreferredDownloadAudioFormat(settings: {
     return settings.allowLossyFallback ? "any" : "flac";
 }
 
+function getLossyFallbackNotice(response: Pick<DownloadResponse, "quality_notice" | "actual_format" | "actual_bitrate_kbps">) {
+    if (response.quality_notice) {
+        return response.quality_notice;
+    }
+
+    if (!response.actual_format) {
+        return "Download completed with lossy fallback";
+    }
+
+    const bitrateSuffix = typeof response.actual_bitrate_kbps === "number" && response.actual_bitrate_kbps > 0
+        ? ` ${response.actual_bitrate_kbps} kbps`
+        : "";
+    return `Download completed with lossy fallback (${response.actual_format}${bitrateSuffix})`;
+}
+
 export function useDownload(region: string) {
     const [downloadProgress, setDownloadProgress] = useState<number>(0);
     const [isDownloading, setIsDownloading] = useState(false);
@@ -72,6 +87,111 @@ export function useDownload(region: string) {
         artists: string;
     } | null>(null);
     const shouldStopDownloadRef = useRef(false);
+    const trySlskdAutoPass = async (params: {
+        albumName?: string;
+        albumArtist?: string;
+        copyright?: string;
+        coverUrl?: string;
+        displayAlbumArtist?: string;
+        displayArtist?: string;
+        durationSeconds?: number;
+        finalReleaseDate?: string;
+        itemID?: string;
+        outputDir: string;
+        position?: number;
+        publisher?: string;
+        query?: string;
+        resolvedTemplateISRC?: string;
+        settings: any;
+        spotifyDiscNumber?: number;
+        spotifyId?: string;
+        spotifyTotalDiscs?: number;
+        spotifyTotalTracks?: number;
+        spotifyTrackNumber?: number;
+        trackName?: string;
+        useAlbumTrackNumber: boolean;
+    }) => {
+        const {
+            albumName,
+            copyright,
+            coverUrl,
+            displayAlbumArtist,
+            displayArtist,
+            durationSeconds,
+            finalReleaseDate,
+            itemID,
+            outputDir,
+            position,
+            publisher,
+            query,
+            resolvedTemplateISRC,
+            settings,
+            spotifyDiscNumber,
+            spotifyId,
+            spotifyTotalDiscs,
+            spotifyTotalTracks,
+            spotifyTrackNumber,
+            trackName,
+            useAlbumTrackNumber,
+        } = params;
+
+        if (!settings.slskdFallbackEnabled || !settings.slskdAPIKey || !settings.slskdDownloadsDir) {
+            return null;
+        }
+
+        logger.warning(`streaming sources failed, trying slskd for: ${trackName} - ${displayArtist}`);
+
+        try {
+            const response = await downloadTrack({
+                service: "slskd",
+                query,
+                track_name: trackName,
+                artist_name: displayArtist,
+                album_name: albumName,
+                album_artist: displayAlbumArtist,
+                release_date: finalReleaseDate,
+                cover_url: coverUrl,
+                output_dir: outputDir,
+                filename_format: settings.filenameTemplate,
+                track_number: settings.trackNumber,
+                position,
+                use_album_track_number: useAlbumTrackNumber,
+                spotify_id: spotifyId,
+                embed_lyrics: settings.embedLyrics,
+                embed_max_quality_cover: settings.embedMaxQualityCover,
+                duration: durationSeconds,
+                item_id: itemID,
+                audio_format: settings.autoQuality === "24" ? "HI_RES_LOSSLESS" : "LOSSLESS",
+                spotify_track_number: spotifyTrackNumber,
+                spotify_disc_number: spotifyDiscNumber,
+                spotify_total_tracks: spotifyTotalTracks,
+                spotify_total_discs: spotifyTotalDiscs,
+                isrc: resolvedTemplateISRC || undefined,
+                copyright,
+                publisher,
+                use_first_artist_only: settings.useFirstArtistOnly,
+                use_single_genre: settings.useSingleGenre,
+                embed_genre: settings.embedGenre,
+            });
+
+            if (response.success) {
+                logger.success(`slskd: ${trackName} - ${displayArtist}`);
+                return response;
+            }
+
+            const errMsg = response.error || response.message || "Failed";
+            logger.warning(`slskd failed: ${errMsg}`);
+            return {
+                ...response,
+                error: `[slskd] ${errMsg}`,
+            };
+        }
+        catch (err) {
+            logger.error(`slskd error: ${err}`);
+            return { success: false, error: `[slskd] ${String(err)}` };
+        }
+    };
+
     const tryLossyAutoPass = async (params: {
         albumName?: string;
         albumArtist?: string;
@@ -160,6 +280,7 @@ export function useDownload(region: string) {
                     isrc: resolvedTemplateISRC || undefined,
                     copyright,
                     publisher,
+                    allow_fallback: settings.allowFallback,
                     use_first_artist_only: settings.useFirstArtistOnly,
                     use_single_genre: settings.useSingleGenre,
                     embed_genre: settings.embedGenre,
@@ -211,6 +332,7 @@ export function useDownload(region: string) {
                     isrc: resolvedTemplateISRC || undefined,
                     copyright,
                     publisher,
+                    allow_fallback: settings.allowFallback,
                     use_first_artist_only: settings.useFirstArtistOnly,
                     use_single_genre: settings.useSingleGenre,
                     embed_genre: settings.embedGenre,
@@ -394,6 +516,7 @@ export function useDownload(region: string) {
                             isrc: resolvedTemplateISRC || undefined,
                             copyright: copyright,
                             publisher: publisher,
+                            allow_fallback: settings.allowFallback,
                             use_first_artist_only: settings.useFirstArtistOnly,
                             use_single_genre: settings.useSingleGenre,
                             embed_genre: settings.embedGenre,
@@ -442,6 +565,7 @@ export function useDownload(region: string) {
                             isrc: resolvedTemplateISRC || undefined,
                             copyright: copyright,
                             publisher: publisher,
+                            allow_fallback: settings.allowFallback,
                             use_single_genre: settings.useSingleGenre,
                             embed_genre: settings.embedGenre,
                         });
@@ -489,6 +613,7 @@ export function useDownload(region: string) {
                             isrc: resolvedTemplateISRC || undefined,
                             copyright: copyright,
                             publisher: publisher,
+                            allow_fallback: settings.allowFallback,
                             use_single_genre: settings.useSingleGenre,
                             embed_genre: settings.embedGenre,
                         });
@@ -506,6 +631,39 @@ export function useDownload(region: string) {
                         fallbackErrors.push(`[Qobuz] ${String(err)}`);
                         lastResponse = { success: false, error: String(err) };
                     }
+                }
+            }
+            if (!lastResponse.success) {
+                const slskdResponse = await trySlskdAutoPass({
+                    albumName,
+                    albumArtist,
+                    copyright,
+                    coverUrl,
+                    displayAlbumArtist,
+                    displayArtist,
+                    durationSeconds,
+                    finalReleaseDate: finalReleaseDate || releaseDate,
+                    itemID,
+                    outputDir,
+                    position,
+                    publisher,
+                    query,
+                    resolvedTemplateISRC,
+                    settings,
+                    spotifyDiscNumber,
+                    spotifyId,
+                    spotifyTotalDiscs,
+                    spotifyTotalTracks,
+                    spotifyTrackNumber,
+                    trackName,
+                    useAlbumTrackNumber,
+                });
+                if (slskdResponse?.success) {
+                    return slskdResponse;
+                }
+                if (slskdResponse?.error) {
+                    fallbackErrors.push(slskdResponse.error);
+                    lastResponse = slskdResponse;
                 }
             }
             if (!lastResponse.success) {
@@ -557,12 +715,15 @@ export function useDownload(region: string) {
         else if (service === "qobuz") {
             audioFormat = settings.qobuzQuality || "6";
         }
+        else if (service === "slskd") {
+            audioFormat = settings.autoQuality === "24" ? "HI_RES_LOSSLESS" : "LOSSLESS";
+        }
         else if (service === "deezer") {
             audioFormat = getPreferredDownloadAudioFormat(settings);
         }
         logger.debug(`trying ${service} for: ${trackName} - ${artistName}`);
         const singleServiceResponse = await downloadTrack({
-            service: service as "tidal" | "qobuz" | "amazon",
+            service: service as "tidal" | "qobuz" | "amazon" | "slskd",
             query,
             track_name: trackName,
             artist_name: displayArtist,
@@ -588,9 +749,39 @@ export function useDownload(region: string) {
             isrc: resolvedTemplateISRC || undefined,
             copyright: copyright,
             publisher: publisher,
+            allow_fallback: settings.allowFallback,
             use_single_genre: settings.useSingleGenre,
             embed_genre: settings.embedGenre,
         });
+        if (service !== "slskd" && !singleServiceResponse.success) {
+            const slskdResponse = await trySlskdAutoPass({
+                albumName,
+                albumArtist,
+                copyright,
+                coverUrl,
+                displayAlbumArtist,
+                displayArtist,
+                durationSeconds: durationSecondsForFallback,
+                finalReleaseDate: finalReleaseDate || releaseDate,
+                itemID,
+                outputDir,
+                position: trackNumberForTemplate,
+                publisher,
+                query,
+                resolvedTemplateISRC,
+                settings,
+                spotifyDiscNumber,
+                spotifyId,
+                spotifyTotalDiscs,
+                spotifyTotalTracks,
+                spotifyTrackNumber,
+                trackName,
+                useAlbumTrackNumber,
+            });
+            if (slskdResponse?.success) {
+                return slskdResponse;
+            }
+        }
         if (!singleServiceResponse.success && itemID) {
             const { MarkDownloadItemFailed } = await import("../../wailsjs/go/main/App");
             await MarkDownloadItemFailed(itemID, singleServiceResponse.error || "Download failed");
@@ -712,6 +903,7 @@ export function useDownload(region: string) {
                             isrc: resolvedTemplateISRC || undefined,
                             copyright: copyright,
                             publisher: publisher,
+                            allow_fallback: settings.allowFallback,
                             use_first_artist_only: settings.useFirstArtistOnly,
                             use_single_genre: settings.useSingleGenre,
                             embed_genre: settings.embedGenre,
@@ -760,6 +952,7 @@ export function useDownload(region: string) {
                             isrc: resolvedTemplateISRC || undefined,
                             copyright: copyright,
                             publisher: publisher,
+                            allow_fallback: settings.allowFallback,
                             use_first_artist_only: settings.useFirstArtistOnly,
                             use_single_genre: settings.useSingleGenre,
                             embed_genre: settings.embedGenre,
@@ -809,6 +1002,7 @@ export function useDownload(region: string) {
                             isrc: resolvedTemplateISRC || undefined,
                             copyright: copyright,
                             publisher: publisher,
+                            allow_fallback: settings.allowFallback,
                             use_first_artist_only: settings.useFirstArtistOnly,
                             use_single_genre: settings.useSingleGenre,
                             embed_genre: settings.embedGenre,
@@ -827,6 +1021,39 @@ export function useDownload(region: string) {
                         fallbackErrors.push(`[Qobuz] ${String(err)}`);
                         lastResponse = { success: false, error: String(err) };
                     }
+                }
+            }
+            if (!lastResponse.success) {
+                const slskdResponse = await trySlskdAutoPass({
+                    albumName,
+                    albumArtist,
+                    copyright,
+                    coverUrl,
+                    displayAlbumArtist,
+                    displayArtist,
+                    durationSeconds,
+                    finalReleaseDate: finalReleaseDate || releaseDate,
+                    itemID,
+                    outputDir,
+                    position: trackNumberForTemplate,
+                    publisher,
+                    query,
+                    resolvedTemplateISRC,
+                    settings,
+                    spotifyDiscNumber,
+                    spotifyId,
+                    spotifyTotalDiscs,
+                    spotifyTotalTracks,
+                    spotifyTrackNumber,
+                    trackName,
+                    useAlbumTrackNumber,
+                });
+                if (slskdResponse?.success) {
+                    return slskdResponse;
+                }
+                if (slskdResponse?.error) {
+                    fallbackErrors.push(slskdResponse.error);
+                    lastResponse = slskdResponse;
                 }
             }
             if (!lastResponse.success) {
@@ -878,8 +1105,11 @@ export function useDownload(region: string) {
         else if (service === "qobuz") {
             audioFormat = settings.qobuzQuality || "6";
         }
+        else if (service === "slskd") {
+            audioFormat = settings.autoQuality === "24" ? "HI_RES_LOSSLESS" : "LOSSLESS";
+        }
         const singleServiceResponse = await downloadTrack({
-            service: service as "tidal" | "qobuz" | "amazon",
+            service: service as "tidal" | "qobuz" | "amazon" | "slskd",
             query,
             track_name: trackName,
             artist_name: displayArtist,
@@ -905,10 +1135,40 @@ export function useDownload(region: string) {
             isrc: resolvedTemplateISRC || undefined,
             copyright: copyright,
             publisher: publisher,
+            allow_fallback: settings.allowFallback,
             use_first_artist_only: settings.useFirstArtistOnly,
             use_single_genre: settings.useSingleGenre,
             embed_genre: settings.embedGenre,
         });
+        if (service !== "slskd" && !singleServiceResponse.success) {
+            const slskdResponse = await trySlskdAutoPass({
+                albumName,
+                albumArtist,
+                copyright,
+                coverUrl,
+                displayAlbumArtist,
+                displayArtist,
+                durationSeconds: durationSecondsForFallback,
+                finalReleaseDate: finalReleaseDate || releaseDate,
+                itemID,
+                outputDir,
+                position: trackNumberForTemplate,
+                publisher,
+                query,
+                resolvedTemplateISRC,
+                settings,
+                spotifyDiscNumber,
+                spotifyId,
+                spotifyTotalDiscs,
+                spotifyTotalTracks,
+                spotifyTrackNumber,
+                trackName,
+                useAlbumTrackNumber,
+            });
+            if (slskdResponse?.success) {
+                return slskdResponse;
+            }
+        }
         if (!singleServiceResponse.success && itemID) {
             const { MarkDownloadItemFailed } = await import("../../wailsjs/go/main/App");
             await MarkDownloadItemFailed(itemID, singleServiceResponse.error || "Download failed");
@@ -933,7 +1193,14 @@ export function useDownload(region: string) {
                     setSkippedTracks((prev) => new Set(prev).add(id));
                 }
                 else {
-                    toast.success(response.message);
+                    if (response.lossy_fallback_used) {
+                        const notice = getLossyFallbackNotice(response);
+                        logger.warning(`${trackName} - ${displayArtist}: ${notice}`);
+                        toast.warning(notice);
+                    }
+                    else {
+                        toast.success(response.message);
+                    }
                 }
                 setDownloadedTracks((prev) => new Set(prev).add(id));
                 setFailedTracks((prev) => {
@@ -1035,6 +1302,7 @@ export function useDownload(region: string) {
         let successCount = 0;
         let errorCount = 0;
         let skippedCount = existingSpotifyIDs.size;
+        let lossyFallbackCount = 0;
         const total = selectedTracks.length;
         setDownloadProgress(Math.round((skippedCount / total) * 100));
         for (let i = 0; i < tracksToDownload.length; i++) {
@@ -1060,7 +1328,13 @@ export function useDownload(region: string) {
                     }
                     else {
                         successCount++;
-                        logger.success(`downloaded: ${track.name} - ${displayArtist}`);
+                        if (response.lossy_fallback_used) {
+                            lossyFallbackCount++;
+                            logger.warning(`${track.name} - ${displayArtist}: ${getLossyFallbackNotice(response)}`);
+                        }
+                        else {
+                            logger.success(`downloaded: ${track.name} - ${displayArtist}`);
+                        }
                     }
                     if (response.file) {
                         finalFilePaths.set(id, response.file);
@@ -1075,8 +1349,13 @@ export function useDownload(region: string) {
                 }
                 else {
                     errorCount++;
-                    logger.error(`failed: ${track.name} - ${displayArtist}`);
+                    const errMsg = response.error || response.message || "Download failed";
+                    logger.error(`failed: ${track.name} - ${displayArtist} - ${errMsg}`);
                     setFailedTracks((prev) => new Set(prev).add(id));
+                    if (itemID) {
+                        const { MarkDownloadItemFailed } = await import("../../wailsjs/go/main/App");
+                        await MarkDownloadItemFailed(itemID, errMsg);
+                    }
                 }
             }
             catch (err) {
@@ -1130,6 +1409,9 @@ export function useDownload(region: string) {
                 parts.push(`${skippedCount} skipped`);
             parts.push(`${errorCount} failed`);
             toast.warning(parts.join(", "));
+        }
+        if (lossyFallbackCount > 0) {
+            toast.warning(`${lossyFallbackCount} track${lossyFallbackCount === 1 ? "" : "s"} saved with lossy fallback`);
         }
     };
     const handleDownloadAll = async (tracks: TrackMetadata[], folderName?: string, isAlbum?: boolean) => {
@@ -1205,6 +1487,7 @@ export function useDownload(region: string) {
         let successCount = 0;
         let errorCount = 0;
         let skippedCount = existingSpotifyIDs.size;
+        let lossyFallbackCount = 0;
         const total = tracksWithId.length;
         setDownloadProgress(Math.round((skippedCount / total) * 100));
         for (let i = 0; i < tracksToDownload.length; i++) {
@@ -1230,7 +1513,13 @@ export function useDownload(region: string) {
                     }
                     else {
                         successCount++;
-                        logger.success(`downloaded: ${track.name} - ${displayArtist}`);
+                        if (response.lossy_fallback_used) {
+                            lossyFallbackCount++;
+                            logger.warning(`${track.name} - ${displayArtist}: ${getLossyFallbackNotice(response)}`);
+                        }
+                        else {
+                            logger.success(`downloaded: ${track.name} - ${displayArtist}`);
+                        }
                     }
                     setDownloadedTracks((prev) => new Set(prev).add(trackId));
                     setFailedTracks((prev) => {
@@ -1244,8 +1533,11 @@ export function useDownload(region: string) {
                 }
                 else {
                     errorCount++;
-                    logger.error(`failed: ${track.name} - ${displayArtist}`);
+                    const errMsg = response.error || response.message || "Download failed";
+                    logger.error(`failed: ${track.name} - ${displayArtist} - ${errMsg}`);
                     setFailedTracks((prev) => new Set(prev).add(trackId));
+                    const { MarkDownloadItemFailed } = await import("../../wailsjs/go/main/App");
+                    await MarkDownloadItemFailed(itemID, errMsg);
                 }
             }
             catch (err) {
@@ -1294,6 +1586,9 @@ export function useDownload(region: string) {
                 parts.push(`${skippedCount} skipped`);
             parts.push(`${errorCount} failed`);
             toast.warning(parts.join(", "));
+        }
+        if (lossyFallbackCount > 0) {
+            toast.warning(`${lossyFallbackCount} track${lossyFallbackCount === 1 ? "" : "s"} saved with lossy fallback`);
         }
     };
     const handleStopDownload = () => {

@@ -332,6 +332,7 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest, }: Settin
                           Amazon Music
                         </span>
                       </SelectItem>
+                      <SelectItem value="slskd">slskd</SelectItem>
 
                     </SelectContent>
                   </Select>
@@ -515,8 +516,66 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest, }: Settin
                   </div>
                 </div>
                 {tempSettings.allowLossyFallback && (<p className="text-xs text-muted-foreground">
-                    If lossless download attempts fail, keep a playable MP3/M4A/AAC result instead of failing.
+                    If lossless download attempts fail, keep a playable MP3/M4A/AAC result and warn when a lossy fallback was used.
                   </p>)}
+
+                <div className="border-t pt-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <Switch id="slskd-fallback-enabled" checked={tempSettings.slskdFallbackEnabled} onCheckedChange={(checked) => setTempSettings((prev) => ({
+                    ...prev,
+                    slskdFallbackEnabled: checked,
+                }))}/>
+                    <Label htmlFor="slskd-fallback-enabled" className="text-sm font-normal cursor-pointer">
+                      Try slskd after streaming sources fail
+                    </Label>
+                  </div>
+
+                  {(tempSettings.slskdFallbackEnabled || tempSettings.downloader === "slskd") && (<div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="slskd-url">slskd URL</Label>
+                        <InputWithContext id="slskd-url" value={tempSettings.slskdURL} onChange={(e) => setTempSettings((prev) => ({
+                    ...prev,
+                    slskdURL: e.target.value,
+                }))} placeholder="http://localhost:5030"/>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="slskd-api-key">slskd API Key</Label>
+                        <InputWithContext id="slskd-api-key" value={tempSettings.slskdAPIKey} onChange={(e) => setTempSettings((prev) => ({
+                    ...prev,
+                    slskdAPIKey: e.target.value,
+                }))} placeholder="X-API-Key from slskd" type="password"/>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="slskd-downloads-dir">slskd Downloads Directory</Label>
+                        <div className="flex gap-2">
+                          <InputWithContext id="slskd-downloads-dir" value={tempSettings.slskdDownloadsDir} onChange={(e) => setTempSettings((prev) => ({
+                    ...prev,
+                    slskdDownloadsDir: e.target.value,
+                }))} placeholder="/path/to/slskd/downloads"/>
+                          <Button type="button" variant="outline" onClick={async () => {
+                    try {
+                        const selectedPath = await SelectFolder(tempSettings.slskdDownloadsDir || "");
+                        if (selectedPath && selectedPath.trim() !== "") {
+                            setTempSettings((prev) => ({ ...prev, slskdDownloadsDir: selectedPath }));
+                        }
+                    }
+                    catch (error) {
+                        toast.error(`Error selecting folder: ${error}`);
+                    }
+                }} className="gap-1.5">
+                            <FolderOpen className="h-4 w-4"/>
+                            Browse
+                          </Button>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        Uses POST /searches, GET /searches/&lt;id&gt;/responses, and POST /transfers/downloads/&lt;username&gt; on your local slskd instance, then copies the completed file from the configured downloads directory.
+                      </p>
+                    </div>)}
+                </div>
 
               </div>
 

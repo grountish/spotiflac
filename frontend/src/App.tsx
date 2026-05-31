@@ -28,7 +28,6 @@ import { useMetadata } from "@/hooks/useMetadata";
 import { useLyrics } from "@/hooks/useLyrics";
 import { useCover } from "@/hooks/useCover";
 import { useAvailability } from "@/hooks/useAvailability";
-import { ensureApiStatusCheckStarted } from "@/lib/api-status";
 import { useDownloadQueueDialog } from "@/hooks/useDownloadQueueDialog";
 import { useDownloadProgress } from "@/hooks/useDownloadProgress";
 import { buildPlaylistFolderName } from "@/lib/playlist";
@@ -36,6 +35,11 @@ import { buildLocalCollectionPlaybackTargetFromFolder, buildLocalCollectionPlayb
 import type { DownloadedFolderSummary, SpotifyMetadataResponse } from "@/types/api";
 const HISTORY_KEY = "spotiflac_fetch_history";
 const MAX_HISTORY = 5;
+
+async function resolvePlaybackSource(filePath: string): Promise<string> {
+    return await GetAudioPlaybackURL(filePath);
+}
+
 interface CachedFetchHistoryItem {
     id: string;
     url: string;
@@ -161,7 +165,7 @@ function App() {
     const downloadedAlbums = useDownloadedAlbums();
     const downloadQueue = useDownloadQueueDialog();
     const localPlayer = useLocalAudioPlayer({
-        resolveSource: GetAudioPlaybackURL,
+        resolveSource: resolvePlaybackSource,
     });
     const [activeLocalCollection, setActiveLocalCollection] = useState<LocalCollectionPlaybackTarget | null>(null);
     const [isFFmpegInstalled, setIsFFmpegInstalled] = useState<boolean | null>(null);
@@ -212,7 +216,6 @@ function App() {
             }
         };
         mediaQuery.addEventListener("change", handleChange);
-        ensureApiStatusCheckStarted();
         void loadHistory();
         const handleScroll = () => {
             setShowScrollTop(window.scrollY > 300);
