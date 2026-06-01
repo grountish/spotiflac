@@ -47,7 +47,7 @@ func LoadConfigSettings() (map[string]interface{}, error) {
 		return nil, err
 	}
 
-	return settings, nil
+	return ApplyManagedSlskdDefaults(settings), nil
 }
 
 func GetRedownloadWithSuffixSetting() bool {

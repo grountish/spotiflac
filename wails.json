@@ -5,8 +5,8 @@
   "frontend:install": "pnpm install",
   "frontend:dev:install": "pnpm install",
   "frontend:build": "pnpm run build",
-  "frontend:dev:watcher": "pnpm run dev",
-  "frontend:dev:serverUrl": "auto",
+  "frontend:dev:watcher": "pnpm exec vite --host 127.0.0.1 --port 5173 --strictPort --clearScreen false",
+  "frontend:dev:serverUrl": "http://127.0.0.1:5173",
   "author": {
     "name": "afkarxyz"
   },

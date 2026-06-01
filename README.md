@@ -27,6 +27,12 @@ Requirements:
 - `pnpm`
 - optional: `wails`
 
+For the vendored `slskd` integration used by the desktop app at runtime:
+
+- `dotnet` is required if you want SpotiFLAC to launch the checked-in `frontend/third_party/slskd` source checkout directly.
+- The first run of the managed `slskd` instance still needs Soulseek credentials configured in the generated app dir at `~/.spotiflac/slskd`.
+- SpotiFLAC auto-fills the local `slskd` URL, API key, and downloads directory from that managed instance when the vendored checkout is present.
+
 If the global `wails` CLI is not installed, the script falls back to:
 
 ```bash

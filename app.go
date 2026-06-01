@@ -344,6 +344,10 @@ func (a *App) getFirstArtist(artistString string) string {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.startAudioServer()
+	backend.StartManagedSlskd()
+	if summary := backend.ManagedSlskdStartupSummary(); summary != "" {
+		fmt.Printf("%s\n", summary)
+	}
 
 	if err := backend.InitHistoryDB("SpotiFLAC"); err != nil {
 		fmt.Printf("Failed to init history DB: %v\n", err)
@@ -358,6 +362,7 @@ func (a *App) startup(ctx context.Context) {
 
 func (a *App) shutdown(ctx context.Context) {
 	a.stopAudioServer()
+	backend.StopManagedSlskd()
 	backend.CloseHistoryDB()
 	backend.CloseISRCCacheDB()
 	backend.CloseProviderPriorityDB()
@@ -1097,9 +1102,17 @@ func (a *App) SelectFile() (string, error) {
 }
 
 func (a *App) GetDefaults() map[string]string {
-	return map[string]string{
+	defaults := map[string]string{
 		"downloadPath": backend.GetDefaultMusicPath(),
 	}
+	managed := backend.GetManagedSlskdInfo()
+	if managed.Managed {
+		defaults["slskdURL"] = managed.URL
+		defaults["slskdAPIKey"] = managed.APIKey
+		defaults["slskdDownloadsDir"] = managed.DownloadsDir
+		defaults["slskdManagedAppDir"] = managed.AppDir
+	}
+	return defaults
 }
 
 func (a *App) GetDownloadProgress() backend.ProgressInfo {
@@ -2224,7 +2237,7 @@ func (a *App) LoadSettings() (map[string]interface{}, error) {
 		return nil, err
 	}
 
-	return settings, nil
+	return backend.ApplyManagedSlskdDefaults(settings), nil
 }
 
 func (a *App) CheckFFmpegInstalled() (bool, error) {
