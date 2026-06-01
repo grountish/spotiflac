@@ -1,0 +1,3 @@
+[submodule "frontend/third_party/slskd"]
+	path = frontend/third_party/slskd
+	url = https://github.com/slskd/slskd
