@@ -752,12 +752,21 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest }: Setting
                         <Switch
                           id="slskd-prefer-mp3"
                           checked={tempSettings.slskdPreferMp3}
-                          onCheckedChange={(checked) =>
-                            setTempSettings((prev) => ({
-                              ...prev,
-                              slskdPreferMp3: checked,
-                            }))
-                          }
+                          onCheckedChange={async (checked) => {
+                            // Instant-apply: persist this preference immediately so it
+                            // sticks without needing the Save button. Only this field is
+                            // committed (from the saved baseline); other unsaved edits
+                            // remain pending.
+                            setTempSettings((prev) => ({ ...prev, slskdPreferMp3: checked }));
+                            const next = { ...savedSettings, slskdPreferMp3: checked };
+                            setSavedSettings(next);
+                            try {
+                              await saveSettings(next);
+                            } catch (error) {
+                              console.error('Failed to save slskdPreferMp3:', error);
+                              toast.error('Failed to save preference');
+                            }
+                          }}
                         />
                         <Label
                           htmlFor="slskd-prefer-mp3"
