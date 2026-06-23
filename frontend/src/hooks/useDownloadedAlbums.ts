@@ -31,7 +31,11 @@ export function useDownloadedAlbums(limit = DEFAULT_LIMIT) {
         };
 
         window.addEventListener("settingsUpdated", handleSettingsUpdate);
-        return () => window.removeEventListener("settingsUpdated", handleSettingsUpdate);
+        window.addEventListener("downloadsUpdated", handleSettingsUpdate);
+        return () => {
+            window.removeEventListener("settingsUpdated", handleSettingsUpdate);
+            window.removeEventListener("downloadsUpdated", handleSettingsUpdate);
+        };
     }, [refresh]);
 
     return {

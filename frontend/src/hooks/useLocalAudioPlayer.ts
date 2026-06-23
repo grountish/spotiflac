@@ -294,6 +294,17 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
     }, [disposeFadingAudio, updateProgress]);
 
     const setTrackList = useCallback((nextTracks: LocalAudioTrack[]) => {
+        const prev = tracksRef.current;
+        const sameTracks =
+            prev.length === nextTracks.length &&
+            prev.every((track, index) => track.id === nextTracks[index].id && track.filePath === nextTracks[index].filePath);
+        if (sameTracks) {
+            // Idempotent: identical track list (same ids and file paths). Skipping
+            // the state writes avoids a setQueue-driven re-render loop when an active
+            // collection's sync effect re-fires on every render (in-album-view Play).
+            return;
+        }
+
         tracksRef.current = nextTracks;
         setTracks(nextTracks);
         syncQueueOrder(nextTracks);

@@ -1540,6 +1540,7 @@ export function useDownload(region: string) {
     setIsDownloading(false);
     setBulkDownloadType(null);
     shouldStopDownloadRef.current = false;
+    window.dispatchEvent(new CustomEvent('downloadsUpdated'));
     const { CancelAllQueuedItems } = await import('../../wailsjs/go/main/App');
     await CancelAllQueuedItems();
     if (settings.createM3u8File && folderName) {
@@ -1766,6 +1767,7 @@ export function useDownload(region: string) {
     setIsDownloading(false);
     setBulkDownloadType(null);
     shouldStopDownloadRef.current = false;
+    window.dispatchEvent(new CustomEvent('downloadsUpdated'));
     const { CancelAllQueuedItems: CancelQueued } = await import('../../wailsjs/go/main/App');
     await CancelQueued();
     if (settings.createM3u8File && folderName) {

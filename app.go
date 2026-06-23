@@ -1101,6 +1101,24 @@ func (a *App) SelectFile() (string, error) {
 	return backend.SelectFileDialog(a.ctx)
 }
 
+// ConfirmDialog shows a native confirmation dialog and returns true if the user
+// confirmed. Used instead of the browser's window.confirm(), which is a no-op
+// (returns false without showing a dialog) inside the WKWebView.
+func (a *App) ConfirmDialog(title, message string) (bool, error) {
+	selection, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Type:          runtime.QuestionDialog,
+		Title:         title,
+		Message:       message,
+		Buttons:       []string{"Delete", "Cancel"},
+		DefaultButton: "Cancel",
+		CancelButton:  "Cancel",
+	})
+	if err != nil {
+		return false, err
+	}
+	return selection == "Delete", nil
+}
+
 func (a *App) GetDefaults() map[string]string {
 	defaults := map[string]string{
 		"downloadPath": backend.GetDefaultMusicPath(),

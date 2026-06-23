@@ -748,6 +748,29 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest }: Setting
                         </div>
                       </div>
 
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          id="slskd-prefer-mp3"
+                          checked={tempSettings.slskdPreferMp3}
+                          onCheckedChange={(checked) =>
+                            setTempSettings((prev) => ({
+                              ...prev,
+                              slskdPreferMp3: checked,
+                            }))
+                          }
+                        />
+                        <Label
+                          htmlFor="slskd-prefer-mp3"
+                          className="text-sm font-normal cursor-pointer">
+                          Prefer 320 kbps MP3 over FLAC
+                        </Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        When enabled, slskd downloads pick the best MP3 (favoring ~320 kbps) instead
+                        of FLAC. Useful since MP3 is more widely shared, so downloads succeed more
+                        often and finish faster.
+                      </p>
+
                       <p className="text-xs text-muted-foreground">
                         Uses POST /searches, GET /searches/&lt;id&gt;/responses, and POST
                         /transfers/downloads/&lt;username&gt; on your local slskd instance, then

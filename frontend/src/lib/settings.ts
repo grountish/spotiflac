@@ -98,6 +98,7 @@ export interface Settings {
   slskdURL: string;
   slskdAPIKey: string;
   slskdDownloadsDir: string;
+  slskdPreferMp3: boolean;
   createPlaylistFolder: boolean;
   playlistOwnerFolderName: boolean;
   createM3u8File: boolean;
@@ -217,6 +218,7 @@ export const DEFAULT_SETTINGS: Settings = {
   slskdURL: 'http://localhost:5030',
   slskdAPIKey: '',
   slskdDownloadsDir: '',
+  slskdPreferMp3: false,
   createPlaylistFolder: true,
   playlistOwnerFolderName: false,
   createM3u8File: false,
