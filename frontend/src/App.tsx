@@ -21,6 +21,8 @@ import { DownloadedAlbumsCarousel } from "@/components/DownloadedAlbumsCarousel"
 import { SettingsPage } from "@/components/SettingsPage";
 import type { HistoryItem } from "@/components/FetchHistory";
 import { LocalPlayerSidebar } from "@/components/LocalPlayerSidebar";
+import { LogConsole } from "@/components/LogConsole";
+import { logger } from "@/lib/logger";
 import { useDownloadedAlbums } from "@/hooks/useDownloadedAlbums";
 import { useDownload } from "@/hooks/useDownload";
 import { useLocalAudioPlayer } from "@/hooks/useLocalAudioPlayer";
@@ -364,6 +366,20 @@ function App() {
         setHistoryPlayableTargets({});
         setHistoryPlayableCheckingIds(new Set());
     }, [download.downloadedTracks.size, download.skippedTracks.size]);
+    useEffect(() => {
+        EventsOn("slskd:log", (ev: { phase?: string; level?: string; message?: string; track?: string }) => {
+            const scope = ev?.phase ? `[slskd:${ev.phase}]` : "[slskd]";
+            const track = ev?.track ? ` (${ev.track})` : "";
+            const message = `${scope}${track} ${ev?.message ?? ""}`.trim();
+            switch (ev?.level) {
+                case "success": logger.success(message); break;
+                case "warn": logger.warning(message); break;
+                case "error": logger.error(message); break;
+                default: logger.info(message);
+            }
+        });
+        return () => EventsOff("slskd:log");
+    }, []);
     const handleInstallFFmpeg = async () => {
         setIsInstallingFFmpeg(true);
         setFfmpegInstallProgress(0);
@@ -933,6 +949,7 @@ function App() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            <LogConsole />
         </div>
     </TooltipProvider>);
 }

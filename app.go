@@ -905,6 +905,9 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 			err = newErr
 			break
 		}
+		downloader.SetLogger(func(ev backend.SlskdLogEvent) {
+			runtime.EventsEmit(a.ctx, "slskd:log", ev)
+		})
 		filename, err = downloader.Download(req.Query, req.OutputDir, req.AudioFormat, req.FilenameFormat, req.PlaylistName, req.PlaylistOwner, req.TrackNumber, req.Position, req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, req.CoverURL, req.SpotifyTrackNumber, req.SpotifyDiscNumber, req.SpotifyTotalTracks, req.EmbedMaxQualityCover, req.SpotifyTotalDiscs, req.Copyright, req.Publisher, req.Composer, metadataSeparator, req.ISRC, spotifyURL, req.Duration, req.UseFirstArtistOnly, req.UseSingleGenre, req.EmbedGenre)
 
 	default:

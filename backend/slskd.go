@@ -36,6 +36,23 @@ type SlskdDownloader struct {
 	client       *http.Client
 	downloadsDir string
 	preferMp3    bool
+	trackLabel   string
+	emit         func(SlskdLogEvent)
+}
+
+// SlskdLogEvent is a single diagnostic step in a slskd download. It is printed to
+// stdout, appended to ~/.spotiflac/slskd/slskd-activity.log, and (when a logger is
+// attached) emitted to the UI as a "slskd:log" event so the previously opaque
+// search/peer/transfer flow becomes visible after the user clicks download.
+type SlskdLogEvent struct {
+	Phase    string `json:"phase"`   // search | peer | transfer | result
+	Level    string `json:"level"`   // info | success | warn | error
+	Message  string `json:"message"`
+	Track    string `json:"track,omitempty"`
+	Query    string `json:"query,omitempty"`
+	Username string `json:"username,omitempty"`
+	Filename string `json:"filename,omitempty"`
+	Count    int    `json:"count,omitempty"`
 }
 
 type SlskdSearchRequest struct {
@@ -156,6 +173,46 @@ func NewSlskdDownloader() (*SlskdDownloader, error) {
 		downloadsDir: downloadsDir,
 		preferMp3:    preferMp3,
 	}, nil
+}
+
+// SetLogger attaches a sink for diagnostic events (the App wires this to a Wails
+// "slskd:log" event so the UI can show live progress).
+func (s *SlskdDownloader) SetLogger(emit func(SlskdLogEvent)) {
+	s.emit = emit
+}
+
+func (s *SlskdDownloader) logEvent(ev SlskdLogEvent) {
+	if ev.Level == "" {
+		ev.Level = "info"
+	}
+	if ev.Track == "" {
+		ev.Track = s.trackLabel
+	}
+	fmt.Printf("[slskd:%s] %s\n", ev.Phase, ev.Message)
+	appendSlskdActivityLog(ev)
+	if s.emit != nil {
+		s.emit(ev)
+	}
+}
+
+// appendSlskdActivityLog writes a human-readable line to a persistent activity log
+// so there is a record even in a packaged .app where stdout is not visible.
+func appendSlskdActivityLog(ev SlskdLogEvent) {
+	appDir, err := EnsureAppDir()
+	if err != nil {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(appDir, "slskd", "slskd-activity.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	track := ev.Track
+	if track == "" {
+		track = "-"
+	}
+	fmt.Fprintf(f, "[%s] [%s/%s] [%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), ev.Phase, ev.Level, track, ev.Message)
 }
 
 func (s *SlskdDownloader) addHeaders(req *http.Request) {
@@ -340,6 +397,72 @@ func buildSlskdSearchQuery(query, trackName, artistName, albumName string) strin
 		}
 	}
 	return strings.Join(parts, " ")
+}
+
+// slskdFirstArtist returns the primary artist from a possibly multi-artist credit.
+// Soulseek matches every search token against the peer's path (AND semantics), so
+// ANDing in a secondary artist that isn't in the shared path silently kills the
+// search — observed with "Refracted Alex Heffes; Ryuichi Sakamoto" (0 responses)
+// vs "Refracted Alex Heffes" (matches). Unlike GetFirstArtist this also splits on
+// the ";" separator the app uses for multiple artists.
+func slskdFirstArtist(artist string) string {
+	artist = strings.TrimSpace(artist)
+	if artist == "" {
+		return ""
+	}
+	lower := strings.ToLower(artist)
+	cut := len(artist)
+	for _, sep := range []string{";", ",", " & ", "/", " feat.", " feat ", " ft.", " ft ", " featuring ", " x ", " vs ", " vs. ", " with "} {
+		if idx := strings.Index(lower, sep); idx >= 0 && idx < cut {
+			cut = idx
+		}
+	}
+	first := strings.TrimSpace(artist[:cut])
+	if first == "" {
+		return artist
+	}
+	return first
+}
+
+// buildSlskdSearchLadder returns the precise query first, then progressively
+// relaxed fallbacks. Soulseek requires a peer path to contain EVERY token, so a
+// single over-specified term (commonly a second artist) can yield 0 responses for
+// a track that is in fact well-seeded. Each tier still pins the track name plus a
+// strong discriminator (first artist or album), so relaxation does not pull in
+// unrelated files. Tiers are de-duplicated and empty fields skipped.
+func buildSlskdSearchLadder(primary, track, artist, album string) []string {
+	track = strings.TrimSpace(track)
+	album = strings.TrimSpace(album)
+
+	ladder := make([]string, 0, 4)
+	seen := make(map[string]bool)
+	add := func(q string) {
+		q = strings.Join(strings.Fields(q), " ")
+		if q == "" {
+			return
+		}
+		key := strings.ToLower(q)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		ladder = append(ladder, q)
+	}
+
+	add(primary)
+	if track != "" {
+		first := slskdFirstArtist(artist)
+		if first != "" {
+			add(track + " " + first)
+		}
+		if album != "" {
+			add(track + " " + album)
+		}
+		if first != "" && album != "" {
+			add(track + " " + first + " " + album)
+		}
+	}
+	return ladder
 }
 
 func (s *SlskdDownloader) waitForSearch(searchID string) (SlskdSearchState, error) {
@@ -717,6 +840,11 @@ func (s *SlskdDownloader) Download(query, outputDir, quality, filenameFormat, pl
 		close(metaChan)
 	}
 
+	s.trackLabel = strings.TrimSpace(spotifyTrackName)
+	if s.trackLabel == "" {
+		s.trackLabel = strings.TrimSpace(query)
+	}
+
 	searchQuery := buildSlskdSearchQuery(query, spotifyTrackName, spotifyArtistName, spotifyAlbumName)
 	if searchQuery == "" {
 		return "", fmt.Errorf("slskd search query is empty")
@@ -724,17 +852,46 @@ func (s *SlskdDownloader) Download(query, outputDir, quality, filenameFormat, pl
 
 	preferLossy := s.preferMp3
 	requestedLossless := slskdRequestedLosslessFormat(quality) && !preferLossy
-	searchID, responses, err := s.fetchSearchResponses(searchQuery)
-	if err != nil {
-		return "", err
-	}
-	if searchID != "" {
-		fmt.Printf("slskd search created: %s\n", searchID)
+
+	// Search with a relaxation ladder: the precise query first, then progressively
+	// looser fallbacks. A single over-specified token (often a second artist) can
+	// make Soulseek's AND-match return 0 responses for a well-seeded track; the
+	// looser tiers recover it without pulling in unrelated files.
+	ladder := buildSlskdSearchLadder(searchQuery, spotifyTrackName, spotifyArtistName, spotifyAlbumName)
+	s.logEvent(SlskdLogEvent{Phase: "search", Message: fmt.Sprintf("searching slskd (%d query tier(s))", len(ladder)), Query: ladder[0]})
+
+	var candidates []slskdScoredCandidate
+	var searchErr error
+	for i, q := range ladder {
+		s.logEvent(SlskdLogEvent{Phase: "search", Query: q, Message: fmt.Sprintf("query %d/%d: %q", i+1, len(ladder), q)})
+		_, responses, fErr := s.fetchSearchResponses(q)
+		if fErr != nil {
+			searchErr = fErr
+			s.logEvent(SlskdLogEvent{Phase: "search", Level: "error", Query: q, Message: fmt.Sprintf("search request failed: %v", fErr)})
+			continue
+		}
+		ranked, rankErr := s.rankCandidates(responses, requestedLossless, preferLossy, duration, spotifyTrackName, spotifyArtistName, spotifyAlbumName)
+		if rankErr != nil {
+			searchErr = rankErr
+			s.logEvent(SlskdLogEvent{Phase: "search", Level: "warn", Query: q, Count: len(responses), Message: fmt.Sprintf("%q → %d peer(s), no usable files (%v)", q, len(responses), rankErr)})
+			continue
+		}
+		candidates = ranked
+		if i == 0 {
+			s.logEvent(SlskdLogEvent{Phase: "search", Level: "success", Query: q, Count: len(candidates), Message: fmt.Sprintf("%q → %d candidate file(s) from %d peer(s)", q, len(candidates), len(responses))})
+		} else {
+			s.logEvent(SlskdLogEvent{Phase: "search", Level: "success", Query: q, Count: len(candidates), Message: fmt.Sprintf("recovered with relaxed query %q (%d candidate(s) from %d peer(s)) after %d stricter attempt(s) returned nothing", q, len(candidates), len(responses), i)})
+		}
+		break
 	}
 
-	candidates, err := s.rankCandidates(responses, requestedLossless, preferLossy, duration, spotifyTrackName, spotifyArtistName, spotifyAlbumName)
-	if err != nil {
-		return "", err
+	if len(candidates) == 0 {
+		if searchErr != nil {
+			s.logEvent(SlskdLogEvent{Phase: "result", Level: "error", Message: fmt.Sprintf("no result after %d query tier(s): %v", len(ladder), searchErr)})
+			return "", searchErr
+		}
+		s.logEvent(SlskdLogEvent{Phase: "result", Level: "error", Message: "no result: slskd search returned no responses"})
+		return "", fmt.Errorf("slskd search returned no responses")
 	}
 
 	// Try peers in ranked order until one actually serves the file. The top
@@ -745,6 +902,7 @@ func (s *SlskdDownloader) Download(query, outputDir, quality, filenameFormat, pl
 	var candidate *slskdScoredCandidate
 	var transfer *SlskdTransfer
 	var startedAt time.Time
+	var err error
 	failedUsers := make(map[string]bool)
 	attempts := 0
 	for i := range candidates {
@@ -757,30 +915,34 @@ func (s *SlskdDownloader) Download(query, outputDir, quality, filenameFormat, pl
 		}
 		attempts++
 
-		fmt.Printf("slskd attempt %d/%d: %s (%s)\n", attempts, slskdMaxDownloadAttempts, c.File.Filename, c.Response.Username)
+		s.logEvent(SlskdLogEvent{Phase: "peer", Username: c.Response.Username, Filename: slskdRemoteBaseName(c.File.Filename), Message: fmt.Sprintf("attempt %d/%d — requesting %q from %s", attempts, slskdMaxDownloadAttempts, slskdRemoteBaseName(c.File.Filename), c.Response.Username)})
 		t, st, enqErr := s.enqueueAndWait(c)
 		if enqErr == nil {
 			candidate = c
 			transfer = t
 			startedAt = st
 			err = nil
+			s.logEvent(SlskdLogEvent{Phase: "peer", Level: "success", Username: c.Response.Username, Filename: slskdRemoteBaseName(c.File.Filename), Message: fmt.Sprintf("downloading from %s", c.Response.Username)})
 			break
 		}
 
 		err = enqErr
 		failedUsers[c.Response.Username] = true
-		fmt.Printf("slskd candidate failed (%s): %v\n", c.Response.Username, enqErr)
+		s.logEvent(SlskdLogEvent{Phase: "peer", Level: "warn", Username: c.Response.Username, Message: fmt.Sprintf("peer %s rejected/failed (%v) — trying next", c.Response.Username, enqErr)})
 	}
 
 	if candidate == nil || transfer == nil {
 		if err != nil {
+			s.logEvent(SlskdLogEvent{Phase: "result", Level: "error", Message: fmt.Sprintf("all %d peer attempt(s) failed: %v", attempts, err)})
 			return "", err
 		}
+		s.logEvent(SlskdLogEvent{Phase: "result", Level: "error", Message: "no peer could serve the requested file"})
 		return "", fmt.Errorf("slskd: no peer could serve the requested file")
 	}
 
 	sourcePath, err := s.findDownloadedFile(transfer.Filename, transfer.Size, startedAt)
 	if err != nil {
+		s.logEvent(SlskdLogEvent{Phase: "transfer", Level: "error", Username: transfer.Username, Message: fmt.Sprintf("transfer reported complete but file not found: %v", err)})
 		return "", err
 	}
 
@@ -865,6 +1027,7 @@ func (s *SlskdDownloader) Download(query, outputDir, quality, filenameFormat, pl
 		fmt.Printf("Warning: Failed to embed metadata for slskd file: %v\n", err)
 	}
 
+	s.logEvent(SlskdLogEvent{Phase: "result", Level: "success", Filename: filepath.Base(targetPath), Message: fmt.Sprintf("downloaded successfully → %s", filepath.Base(targetPath))})
 	fmt.Println("✓ Downloaded successfully from slskd")
 	return targetPath, nil
 }
