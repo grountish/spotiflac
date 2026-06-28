@@ -94,10 +94,10 @@ export interface Settings {
   autoQuality: '16' | '24';
   allowFallback: boolean;
   allowLossyFallback: boolean;
-  slskdFallbackEnabled: boolean;
   slskdURL: string;
   slskdAPIKey: string;
   slskdDownloadsDir: string;
+  slskdPreferMp3: boolean;
   createPlaylistFolder: boolean;
   playlistOwnerFolderName: boolean;
   createM3u8File: boolean;
@@ -213,10 +213,10 @@ export const DEFAULT_SETTINGS: Settings = {
   autoQuality: '16',
   allowFallback: true,
   allowLossyFallback: false,
-  slskdFallbackEnabled: false,
   slskdURL: 'http://localhost:5030',
   slskdAPIKey: '',
   slskdDownloadsDir: '',
+  slskdPreferMp3: false,
   createPlaylistFolder: true,
   playlistOwnerFolderName: false,
   createM3u8File: false,
@@ -377,9 +377,6 @@ function getSettingsFromLocalStorage(): Settings {
       if (!('allowLossyFallback' in parsed)) {
         parsed.allowLossyFallback = false;
       }
-      if (!('slskdFallbackEnabled' in parsed)) {
-        parsed.slskdFallbackEnabled = false;
-      }
       if (!('slskdURL' in parsed)) {
         parsed.slskdURL = 'http://localhost:5030';
       }
@@ -485,9 +482,6 @@ export async function loadSettings(): Promise<Settings> {
       }
       if (!('allowLossyFallback' in parsed)) {
         parsed.allowLossyFallback = false;
-      }
-      if (!('slskdFallbackEnabled' in parsed)) {
-        parsed.slskdFallbackEnabled = false;
       }
       if (!('slskdURL' in parsed)) {
         parsed.slskdURL = 'http://localhost:5030';

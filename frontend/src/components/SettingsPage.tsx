@@ -658,25 +658,14 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest }: Setting
                 )}
 
                 <div className="border-t pt-4 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Switch
-                      id="slskd-fallback-enabled"
-                      checked={tempSettings.slskdFallbackEnabled}
-                      onCheckedChange={(checked) =>
-                        setTempSettings((prev) => ({
-                          ...prev,
-                          slskdFallbackEnabled: checked,
-                        }))
-                      }
-                    />
-                    <Label
-                      htmlFor="slskd-fallback-enabled"
-                      className="text-sm font-normal cursor-pointer">
-                      Try slskd after streaming sources fail
-                    </Label>
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium">slskd (primary source)</Label>
+                    <p className="text-xs text-muted-foreground">
+                      slskd is the primary download source. Tracks are fetched from Soulseek
+                      first; the streaming sources above are used only as a fallback.
+                    </p>
                   </div>
 
-                  {(tempSettings.slskdFallbackEnabled || tempSettings.downloader === 'slskd') && (
                     <div className="space-y-3">
                       <div className="space-y-2">
                         <Label htmlFor="slskd-url">slskd URL</Label>
@@ -748,6 +737,38 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest }: Setting
                         </div>
                       </div>
 
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          id="slskd-prefer-mp3"
+                          checked={tempSettings.slskdPreferMp3}
+                          onCheckedChange={async (checked) => {
+                            // Instant-apply: persist this preference immediately so it
+                            // sticks without needing the Save button. Only this field is
+                            // committed (from the saved baseline); other unsaved edits
+                            // remain pending.
+                            setTempSettings((prev) => ({ ...prev, slskdPreferMp3: checked }));
+                            const next = { ...savedSettings, slskdPreferMp3: checked };
+                            setSavedSettings(next);
+                            try {
+                              await saveSettings(next);
+                            } catch (error) {
+                              console.error('Failed to save slskdPreferMp3:', error);
+                              toast.error('Failed to save preference');
+                            }
+                          }}
+                        />
+                        <Label
+                          htmlFor="slskd-prefer-mp3"
+                          className="text-sm font-normal cursor-pointer">
+                          Prefer 320 kbps MP3 over FLAC
+                        </Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        When enabled, slskd downloads pick the best MP3 (favoring ~320 kbps) instead
+                        of FLAC. Useful since MP3 is more widely shared, so downloads succeed more
+                        often and finish faster.
+                      </p>
+
                       <p className="text-xs text-muted-foreground">
                         Uses POST /searches, GET /searches/&lt;id&gt;/responses, and POST
                         /transfers/downloads/&lt;username&gt; on your local slskd instance, then
@@ -756,7 +777,6 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest }: Setting
                         auto-filled from the managed instance and can still be overridden here.
                       </p>
                     </div>
-                  )}
                 </div>
               </div>
 

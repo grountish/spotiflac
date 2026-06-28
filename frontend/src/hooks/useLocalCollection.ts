@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DeleteFiles } from "../../wailsjs/go/main/App";
+import { DeleteFiles, ConfirmDialog } from "../../wailsjs/go/main/App";
 import { toastWithSound as toast } from "@/lib/toast-with-sound";
 import { buildPlayableTracks, resolveLocalTrackPaths, type LocalCollectionPlaybackTarget } from "@/lib/local-playback";
 import type { TrackMetadata } from "@/types/api";
@@ -40,21 +40,16 @@ export function useLocalCollection({
     const [localTrackPaths, setLocalTrackPaths] = useState<Map<string, string>>(new Map());
     const [isCheckingFiles, setIsCheckingFiles] = useState(false);
     const [refreshNonce, setRefreshNonce] = useState(0);
-    const confirmDeletion = useCallback((message: string) => {
-        if (typeof window === "undefined") {
-            return true;
-        }
-
-        const confirmFn = window.confirm;
-        if (typeof confirmFn !== "function") {
-            return true;
-        }
-
+    const confirmDeletion = useCallback(async (message: string): Promise<boolean> => {
+        // Use a native dialog via the Go runtime. The browser's window.confirm()
+        // is a no-op inside the WKWebView (returns false without prompting), which
+        // made the delete buttons appear to do nothing.
         try {
-            return confirmFn(message);
+            return await ConfirmDialog("Delete downloaded files", message);
         }
-        catch {
-            return true;
+        catch (error) {
+            console.error("Confirm dialog failed:", error);
+            return false;
         }
     }, []);
 
@@ -154,7 +149,7 @@ export function useLocalCollection({
             return;
         }
 
-        const confirmed = confirmDeletion("Delete this downloaded file?");
+        const confirmed = await confirmDeletion("Delete this downloaded file?");
         if (!confirmed) {
             return;
         }
@@ -185,7 +180,7 @@ export function useLocalCollection({
             return;
         }
 
-        const confirmed = confirmDeletion(`Delete ${playableTracks.length} downloaded file${playableTracks.length === 1 ? "" : "s"}?`);
+        const confirmed = await confirmDeletion(`Delete ${playableTracks.length} downloaded file${playableTracks.length === 1 ? "" : "s"}?`);
         if (!confirmed) {
             return;
         }

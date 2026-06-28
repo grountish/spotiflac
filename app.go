@@ -905,6 +905,9 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 			err = newErr
 			break
 		}
+		downloader.SetLogger(func(ev backend.SlskdLogEvent) {
+			runtime.EventsEmit(a.ctx, "slskd:log", ev)
+		})
 		filename, err = downloader.Download(req.Query, req.OutputDir, req.AudioFormat, req.FilenameFormat, req.PlaylistName, req.PlaylistOwner, req.TrackNumber, req.Position, req.TrackName, req.ArtistName, req.AlbumName, req.AlbumArtist, req.ReleaseDate, req.CoverURL, req.SpotifyTrackNumber, req.SpotifyDiscNumber, req.SpotifyTotalTracks, req.EmbedMaxQualityCover, req.SpotifyTotalDiscs, req.Copyright, req.Publisher, req.Composer, metadataSeparator, req.ISRC, spotifyURL, req.Duration, req.UseFirstArtistOnly, req.UseSingleGenre, req.EmbedGenre)
 
 	default:
@@ -1099,6 +1102,24 @@ func (a *App) SelectFolder(defaultPath string) (string, error) {
 
 func (a *App) SelectFile() (string, error) {
 	return backend.SelectFileDialog(a.ctx)
+}
+
+// ConfirmDialog shows a native confirmation dialog and returns true if the user
+// confirmed. Used instead of the browser's window.confirm(), which is a no-op
+// (returns false without showing a dialog) inside the WKWebView.
+func (a *App) ConfirmDialog(title, message string) (bool, error) {
+	selection, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Type:          runtime.QuestionDialog,
+		Title:         title,
+		Message:       message,
+		Buttons:       []string{"Delete", "Cancel"},
+		DefaultButton: "Cancel",
+		CancelButton:  "Cancel",
+	})
+	if err != nil {
+		return false, err
+	}
+	return selection == "Delete", nil
 }
 
 func (a *App) GetDefaults() map[string]string {
@@ -1667,27 +1688,6 @@ func (a *App) DownloadAvatar(req AvatarDownloadRequest) (backend.AvatarDownloadR
 	}
 
 	return *resp, nil
-}
-
-func (a *App) CheckTrackAvailability(spotifyTrackID string) (string, error) {
-	if spotifyTrackID == "" {
-		return "", fmt.Errorf("spotify track ID is required")
-	}
-
-	return runWithTimeout(checkOperationTimeout, func() (string, error) {
-		client := backend.NewSongLinkClient()
-		availability, err := client.CheckTrackAvailability(spotifyTrackID)
-		if err != nil {
-			return "", err
-		}
-
-		jsonData, err := json.Marshal(availability)
-		if err != nil {
-			return "", fmt.Errorf("failed to encode response: %v", err)
-		}
-
-		return string(jsonData), nil
-	})
 }
 
 func (a *App) IsFFmpegInstalled() (bool, error) {

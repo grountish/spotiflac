@@ -14,6 +14,19 @@ export function useMetadata() {
     const fetchedCount = useRef(0);
     const currentName = useRef("");
     const [pendingArtistName, setPendingArtistName] = useState<string | null>(null);
+
+    // Navigation history: snapshots of prior views so Back returns to the previous
+    // album/artist/playlist instead of jumping straight home. metadataRef mirrors the
+    // live metadata for snapshotting; currentUrlRef tracks the current view's URL.
+    const metadataRef = useRef<SpotifyMetadataResponse | null>(null);
+    const currentUrlRef = useRef("");
+    const historyRef = useRef<{ data: SpotifyMetadataResponse | null; url: string }[]>([]);
+    const forwardRef = useRef<{ data: SpotifyMetadataResponse | null; url: string }[]>([]);
+    const [historyLength, setHistoryLength] = useState(0);
+    const [forwardLength, setForwardLength] = useState(0);
+    useEffect(() => {
+        metadataRef.current = metadata;
+    }, [metadata]);
     const showFetchFailureAdvice = (errorMsg: string) => {
         setFetchFailureReason(errorMsg);
         setShowVpnAdviceDialog(true);
@@ -161,6 +174,13 @@ export function useMetadata() {
         }
     };
     const fetchMetadataDirectly = async (url: string) => {
+        // Record the view we're leaving so Back can return to it (forward nav only;
+        // goBack restores via setMetadata directly and never routes through here).
+        historyRef.current.push({ data: metadataRef.current, url: currentUrlRef.current });
+        setHistoryLength(historyRef.current.length);
+        forwardRef.current = [];
+        setForwardLength(0);
+        currentUrlRef.current = url;
         const urlType = getUrlType(url);
         logger.info(`fetching ${urlType} metadata...`);
         logger.debug(`url: ${url}`);
@@ -280,6 +300,36 @@ export function useMetadata() {
         await fetchMetadataDirectly(artistUrl);
         return resolvedArtistUrl;
     };
+    // Pop the previous view off the stack and restore it. Returns the URL of the
+    // restored view so the caller can sync the URL bar (empty string == home).
+    const goBack = (): string => {
+        if (historyRef.current.length === 0) {
+            return currentUrlRef.current;
+        }
+        forwardRef.current.push({ data: metadataRef.current, url: currentUrlRef.current });
+        setForwardLength(forwardRef.current.length);
+        const target = historyRef.current.pop()!;
+        setHistoryLength(historyRef.current.length);
+        setMetadata(target.data);
+        metadataRef.current = target.data;
+        currentUrlRef.current = target.url;
+        return target.url;
+    };
+    // Re-enter a view popped by goBack (browser Forward).
+    const goForward = (): string => {
+        if (forwardRef.current.length === 0) {
+            return currentUrlRef.current;
+        }
+        historyRef.current.push({ data: metadataRef.current, url: currentUrlRef.current });
+        setHistoryLength(historyRef.current.length);
+        const target = forwardRef.current.pop()!;
+        setForwardLength(forwardRef.current.length);
+        setMetadata(target.data);
+        metadataRef.current = target.data;
+        currentUrlRef.current = target.url;
+        return target.url;
+    };
+
     return {
         loading,
         metadata,
@@ -291,6 +341,17 @@ export function useMetadata() {
         handleAlbumClick,
         handleArtistClick,
         loadFromCache,
-        resetMetadata: () => setMetadata(null),
+        goBack,
+        goForward,
+        canGoBack: historyLength > 0,
+        canGoForward: forwardLength > 0,
+        resetMetadata: () => {
+            setMetadata(null);
+            historyRef.current = [];
+            forwardRef.current = [];
+            setHistoryLength(0);
+            setForwardLength(0);
+            currentUrlRef.current = "";
+        },
     };
 }

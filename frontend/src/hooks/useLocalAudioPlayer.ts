@@ -294,6 +294,17 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
     }, [disposeFadingAudio, updateProgress]);
 
     const setTrackList = useCallback((nextTracks: LocalAudioTrack[]) => {
+        const prev = tracksRef.current;
+        const sameTracks =
+            prev.length === nextTracks.length &&
+            prev.every((track, index) => track.id === nextTracks[index].id && track.filePath === nextTracks[index].filePath);
+        if (sameTracks) {
+            // Idempotent: identical track list (same ids and file paths). Skipping
+            // the state writes avoids a setQueue-driven re-render loop when an active
+            // collection's sync effect re-fires on every render (in-album-view Play).
+            return;
+        }
+
         tracksRef.current = nextTracks;
         setTracks(nextTracks);
         syncQueueOrder(nextTracks);
@@ -806,6 +817,51 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
             };
         },
     }), []);
+
+    // Wire the system media keys (macOS F7/F9, the Now Playing HUD's
+    // skip buttons, and Bluetooth/AirPods controls) to the player. WKWebView
+    // routes these through the MediaSession API rather than as keydown events,
+    // so previous/next stay dead until explicit action handlers are registered.
+    // play/pause is left to WKWebView's working default (F8).
+    useEffect(() => {
+        if (typeof navigator === "undefined" || !("mediaSession" in navigator)) {
+            return;
+        }
+        const mediaSession = navigator.mediaSession;
+        mediaSession.setActionHandler("previoustrack", () => {
+            void playPrevious();
+        });
+        mediaSession.setActionHandler("nexttrack", () => {
+            void playNext();
+        });
+        return () => {
+            mediaSession.setActionHandler("previoustrack", null);
+            mediaSession.setActionHandler("nexttrack", null);
+        };
+    }, [playPrevious, playNext]);
+
+    // Reflect the current track in the Now Playing HUD so the system overlay,
+    // Control Center, and lock screen show the actual title/artist/art.
+    useEffect(() => {
+        if (typeof navigator === "undefined" || !("mediaSession" in navigator)) {
+            return;
+        }
+        navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+        if (!currentTrack) {
+            navigator.mediaSession.metadata = null;
+            return;
+        }
+        try {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: currentTrack.title,
+                artist: currentTrack.subtitle ?? "",
+                artwork: currentTrack.imageUrl ? [{ src: currentTrack.imageUrl }] : undefined,
+            });
+        }
+        catch {
+            // MediaMetadata unsupported on this engine — HUD falls back to the app name.
+        }
+    }, [currentTrack, isPlaying]);
 
     return {
         currentTrack,
