@@ -94,35 +94,6 @@ func addNonEmpty(set map[string]struct{}, value string) {
 	set[strings.ToLower(value)] = struct{}{}
 }
 
-func normalizeSample(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
-}
-
-func resolveFolderCardIdentity(folderName string, sampleOne localTrackSample, sampleTwo *localTrackSample) (string, string, string) {
-	albumOne := strings.TrimSpace(sampleOne.album)
-	artistOne := strings.TrimSpace(sampleOne.artist)
-
-	if albumOne == "" {
-		return folderName, "Playlist", "playlist"
-	}
-
-	if sampleTwo == nil {
-		if artistOne == "" {
-			artistOne = "Unknown Artist"
-		}
-		return albumOne, artistOne, "album"
-	}
-
-	if normalizeSample(sampleOne.album) == normalizeSample(sampleTwo.album) && normalizeSample(sampleOne.artist) == normalizeSample(sampleTwo.artist) {
-		if artistOne == "" {
-			artistOne = "Unknown Artist"
-		}
-		return albumOne, artistOne, "album"
-	}
-
-	return folderName, "Playlist", "playlist"
-}
-
 func LoadDownloadedFolders(limit int) ([]DownloadedFolderSummary, error) {
 	rootPath := getConfiguredDownloadPath()
 	if strings.TrimSpace(rootPath) == "" {
@@ -192,12 +163,19 @@ func LoadDownloadedFolders(limit int) ([]DownloadedFolderSummary, error) {
 		title := folderName
 		subtitle := "Playlist"
 		kind := "playlist"
-		if len(folder.samples) > 0 {
-			var sampleTwo *localTrackSample
-			if len(folder.samples) > 1 {
-				sampleTwo = &folder.samples[1]
+		// A folder whose tracks all share one album tag is an album — even when
+		// per-track artists differ (e.g. some tracks credited "Artist A" and
+		// others "Artist A;Artist B"). Only fall back to "playlist" when the
+		// tracks span multiple albums or carry no album tag at all.
+		if len(folder.albumKeys) == 1 && len(folder.samples) > 0 {
+			album := strings.TrimSpace(folder.samples[0].album)
+			if album != "" {
+				artist := strings.TrimSpace(folder.samples[0].artist)
+				if artist == "" {
+					artist = "Unknown Artist"
+				}
+				title, subtitle, kind = album, artist, "album"
 			}
-			title, subtitle, kind = resolveFolderCardIdentity(folderName, folder.samples[0], sampleTwo)
 		}
 
 		summaries = append(summaries, DownloadedFolderSummary{

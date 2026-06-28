@@ -18,14 +18,19 @@ import (
 const (
 	slskdDefaultURL            = "http://localhost:5030"
 	slskdPollInterval          = 1 * time.Second
-	slskdSearchTimeout         = 30 * time.Second
+	slskdSearchTimeout         = 15 * time.Second
 	slskdTransferTimeout       = 45 * time.Minute
 	slskdRecentFileGracePeriod = 10 * time.Minute
 	slskdMaxDownloadAttempts   = 6
-	// Quiet period (since the last received response) after which slskd finalizes
-	// a search. Kept short so the search completes quickly once peers reply;
-	// slskd only exposes the response list once the search is complete.
-	slskdSearchQuietPeriod = 8 * time.Second
+	// Quiet period (since the last received response) after which slskd finalizes a
+	// search. slskd only exposes the response list once the search is complete, and
+	// searches run serially (slskd allows one operation at a time), so this is the
+	// per-tier latency — kept tight so a found track lands fast.
+	slskdSearchQuietPeriod = 4 * time.Second
+	// Total budget for the serial query ladder. Once spent, we stop trying the
+	// looser relaxation tiers and let the caller fall back to streaming, instead of
+	// walking every tier (~tiers × quiet period) on a track that isn't on Soulseek.
+	slskdSearchBudget = 6 * time.Second
 )
 
 var slskdNonAlnumPattern = regexp.MustCompile(`[^a-z0-9]+`)
@@ -124,12 +129,6 @@ func NewSlskdDownloader() (*SlskdDownloader, error) {
 	settings, err := LoadConfigSettings()
 	if err != nil || settings == nil {
 		return nil, fmt.Errorf("slskd settings are not configured")
-	}
-
-	enabled, _ := settings["slskdFallbackEnabled"].(bool)
-	selectedDownloader, _ := settings["downloader"].(string)
-	if !enabled && !strings.EqualFold(strings.TrimSpace(selectedDownloader), "slskd") {
-		return nil, fmt.Errorf("slskd fallback is disabled")
 	}
 
 	preferMp3, _ := settings["slskdPreferMp3"].(bool)
@@ -860,9 +859,23 @@ func (s *SlskdDownloader) Download(query, outputDir, quality, filenameFormat, pl
 	ladder := buildSlskdSearchLadder(searchQuery, spotifyTrackName, spotifyArtistName, spotifyAlbumName)
 	s.logEvent(SlskdLogEvent{Phase: "search", Message: fmt.Sprintf("searching slskd (%d query tier(s))", len(ladder)), Query: ladder[0]})
 
+	// slskd permits only ONE search operation at a time — concurrent POST /searches
+	// returns HTTP 429 ("Only one concurrent operation is permitted"), so the ladder
+	// MUST run serially. Walk it precise-query-first and stop at the first tier that
+	// yields usable candidates: most tracks match on tier 1, so we pay a single
+	// quiet period; only genuine misses fall through to the looser tiers. The quiet
+	// period itself is kept short (slskdSearchQuietPeriod) to bound that cost.
 	var candidates []slskdScoredCandidate
 	var searchErr error
+	searchStart := time.Now()
 	for i, q := range ladder {
+		// Time-cap the ladder. The precise tier (i == 0) always runs; past that,
+		// bail if the budget is spent so a miss falls back to streaming quickly
+		// instead of grinding through every looser tier.
+		if i > 0 && time.Since(searchStart) >= slskdSearchBudget {
+			s.logEvent(SlskdLogEvent{Phase: "search", Level: "warn", Message: fmt.Sprintf("search budget (%s) reached after %d tier(s); falling back to streaming", slskdSearchBudget, i)})
+			break
+		}
 		s.logEvent(SlskdLogEvent{Phase: "search", Query: q, Message: fmt.Sprintf("query %d/%d: %q", i+1, len(ladder), q)})
 		_, responses, fErr := s.fetchSearchResponses(q)
 		if fErr != nil {

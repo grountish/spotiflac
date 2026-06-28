@@ -658,25 +658,14 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest }: Setting
                 )}
 
                 <div className="border-t pt-4 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Switch
-                      id="slskd-fallback-enabled"
-                      checked={tempSettings.slskdFallbackEnabled}
-                      onCheckedChange={(checked) =>
-                        setTempSettings((prev) => ({
-                          ...prev,
-                          slskdFallbackEnabled: checked,
-                        }))
-                      }
-                    />
-                    <Label
-                      htmlFor="slskd-fallback-enabled"
-                      className="text-sm font-normal cursor-pointer">
-                      Try slskd after streaming sources fail
-                    </Label>
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium">slskd (primary source)</Label>
+                    <p className="text-xs text-muted-foreground">
+                      slskd is the primary download source. Tracks are fetched from Soulseek
+                      first; the streaming sources above are used only as a fallback.
+                    </p>
                   </div>
 
-                  {(tempSettings.slskdFallbackEnabled || tempSettings.downloader === 'slskd') && (
                     <div className="space-y-3">
                       <div className="space-y-2">
                         <Label htmlFor="slskd-url">slskd URL</Label>
@@ -788,7 +777,6 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest }: Setting
                         auto-filled from the managed instance and can still be overridden here.
                       </p>
                     </div>
-                  )}
                 </div>
               </div>
 

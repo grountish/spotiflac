@@ -150,11 +150,11 @@ export function useDownload(region: string) {
       useAlbumTrackNumber,
     } = params;
 
-    if (!settings.slskdFallbackEnabled) {
+    if (!settings.slskdURL || !settings.slskdAPIKey || !settings.slskdDownloadsDir) {
       return null;
     }
 
-    logger.warning(`streaming sources failed, trying slskd for: ${trackName} - ${displayArtist}`);
+    logger.debug(`trying slskd for: ${trackName} - ${displayArtist}`);
 
     try {
       const response = await downloadTrack({
@@ -520,6 +520,39 @@ export function useDownload(region: string) {
       const is24Bit = (settings.autoQuality || '24') === '24';
       const tidalQuality = is24Bit ? 'HI_RES_LOSSLESS' : 'LOSSLESS';
       const qobuzQuality = is24Bit ? '27' : '6';
+      // slskd is the primary download source: try it first, then fall back to the
+      // streaming services below (kept as a safety net), then lossy as a last resort.
+      const slskdResponse = await trySlskdAutoPass({
+        albumName,
+        albumArtist,
+        copyright,
+        coverUrl,
+        displayAlbumArtist,
+        displayArtist,
+        durationSeconds,
+        finalReleaseDate: finalReleaseDate || releaseDate,
+        itemID,
+        outputDir,
+        position: trackNumberForTemplate,
+        publisher,
+        query,
+        resolvedTemplateISRC,
+        settings,
+        spotifyDiscNumber,
+        spotifyId,
+        spotifyTotalDiscs,
+        spotifyTotalTracks,
+        spotifyTrackNumber,
+        trackName,
+        useAlbumTrackNumber,
+      });
+      if (slskdResponse?.success) {
+        return slskdResponse;
+      }
+      if (slskdResponse?.error) {
+        fallbackErrors.push(slskdResponse.error);
+        lastResponse = slskdResponse;
+      }
       for (const s of order) {
         if (s === 'tidal' && streamingURLs?.tidal_url) {
           try {
@@ -662,39 +695,6 @@ export function useDownload(region: string) {
             fallbackErrors.push(`[Qobuz] ${String(err)}`);
             lastResponse = { success: false, error: String(err) };
           }
-        }
-      }
-      if (!lastResponse.success) {
-        const slskdResponse = await trySlskdAutoPass({
-          albumName,
-          albumArtist,
-          copyright,
-          coverUrl,
-          displayAlbumArtist,
-          displayArtist,
-          durationSeconds,
-          finalReleaseDate: finalReleaseDate || releaseDate,
-          itemID,
-          outputDir,
-          position,
-          publisher,
-          query,
-          resolvedTemplateISRC,
-          settings,
-          spotifyDiscNumber,
-          spotifyId,
-          spotifyTotalDiscs,
-          spotifyTotalTracks,
-          spotifyTrackNumber,
-          trackName,
-          useAlbumTrackNumber,
-        });
-        if (slskdResponse?.success) {
-          return slskdResponse;
-        }
-        if (slskdResponse?.error) {
-          fallbackErrors.push(slskdResponse.error);
-          lastResponse = slskdResponse;
         }
       }
       if (!lastResponse.success) {
@@ -924,6 +924,39 @@ export function useDownload(region: string) {
       const is24Bit = (settings.autoQuality || '24') === '24';
       const tidalQuality = is24Bit ? 'HI_RES_LOSSLESS' : 'LOSSLESS';
       const qobuzQuality = is24Bit ? '27' : '6';
+      // slskd is the primary download source: try it first, then fall back to the
+      // streaming services below (kept as a safety net), then lossy as a last resort.
+      const slskdResponse = await trySlskdAutoPass({
+        albumName,
+        albumArtist,
+        copyright,
+        coverUrl,
+        displayAlbumArtist,
+        displayArtist,
+        durationSeconds,
+        finalReleaseDate: finalReleaseDate || releaseDate,
+        itemID,
+        outputDir,
+        position: trackNumberForTemplate,
+        publisher,
+        query,
+        resolvedTemplateISRC,
+        settings,
+        spotifyDiscNumber,
+        spotifyId,
+        spotifyTotalDiscs,
+        spotifyTotalTracks,
+        spotifyTrackNumber,
+        trackName,
+        useAlbumTrackNumber,
+      });
+      if (slskdResponse?.success) {
+        return slskdResponse;
+      }
+      if (slskdResponse?.error) {
+        fallbackErrors.push(slskdResponse.error);
+        lastResponse = slskdResponse;
+      }
       for (const s of order) {
         if (s === 'tidal' && streamingURLs?.tidal_url) {
           try {
@@ -1069,39 +1102,6 @@ export function useDownload(region: string) {
             fallbackErrors.push(`[Qobuz] ${String(err)}`);
             lastResponse = { success: false, error: String(err) };
           }
-        }
-      }
-      if (!lastResponse.success) {
-        const slskdResponse = await trySlskdAutoPass({
-          albumName,
-          albumArtist,
-          copyright,
-          coverUrl,
-          displayAlbumArtist,
-          displayArtist,
-          durationSeconds,
-          finalReleaseDate: finalReleaseDate || releaseDate,
-          itemID,
-          outputDir,
-          position: trackNumberForTemplate,
-          publisher,
-          query,
-          resolvedTemplateISRC,
-          settings,
-          spotifyDiscNumber,
-          spotifyId,
-          spotifyTotalDiscs,
-          spotifyTotalTracks,
-          spotifyTrackNumber,
-          trackName,
-          useAlbumTrackNumber,
-        });
-        if (slskdResponse?.success) {
-          return slskdResponse;
-        }
-        if (slskdResponse?.error) {
-          fallbackErrors.push(slskdResponse.error);
-          lastResponse = slskdResponse;
         }
       }
       if (!lastResponse.success) {

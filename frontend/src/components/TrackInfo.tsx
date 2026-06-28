@@ -1,11 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Download, FolderOpen, CheckCircle, XCircle, FileCheck, Globe, Play, Pause } from "lucide-react";
+import { Download, FolderOpen, CheckCircle, XCircle, FileCheck, Play, Pause } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger, } from "@/components/ui/tooltip";
-import type { TrackMetadata, TrackAvailability } from "@/types/api";
+import type { TrackMetadata } from "@/types/api";
 import { usePreview } from "@/hooks/usePreview";
-import { AvailabilityLinks, hasAvailabilityLinks } from "./AvailabilityLinks";
 import { buildClickableArtists } from "@/lib/artist-links";
 interface TrackInfoProps {
     track: TrackMetadata & {
@@ -21,15 +20,12 @@ interface TrackInfoProps {
     downloadedLyrics?: boolean;
     failedLyrics?: boolean;
     skippedLyrics?: boolean;
-    checkingAvailability?: boolean;
-    availability?: TrackAvailability;
     downloadingCover?: boolean;
     downloadedCover?: boolean;
     failedCover?: boolean;
     skippedCover?: boolean;
     onDownload: (id: string, name: string, artists: string, albumName?: string, spotifyId?: string, playlistName?: string, durationMs?: number, position?: number, albumArtist?: string, releaseDate?: string, coverUrl?: string, spotifyTrackNumber?: number, spotifyDiscNumber?: number, spotifyTotalTracks?: number, spotifyTotalDiscs?: number, copyright?: string, publisher?: string) => void;
     onDownloadLyrics?: (spotifyId: string, name: string, artists: string, albumName?: string, albumArtist?: string, releaseDate?: string, discNumber?: number) => void;
-    onCheckAvailability?: (spotifyId: string) => void;
     onDownloadCover?: (coverUrl: string, trackName: string, artistName: string, albumName?: string, playlistName?: string, position?: number, trackId?: string, albumArtist?: string, releaseDate?: string, discNumber?: number) => void;
     onOpenFolder: () => void;
     onAlbumClick?: (album: {
@@ -44,7 +40,7 @@ interface TrackInfoProps {
     }) => void;
     onBack?: () => void;
 }
-export function TrackInfo({ track, isDownloading, downloadingTrack, isDownloaded, isFailed, isSkipped, checkingAvailability, availability, onDownload, onCheckAvailability, onOpenFolder, onAlbumClick, onArtistClick, onBack, }: TrackInfoProps) {
+export function TrackInfo({ track, isDownloading, downloadingTrack, isDownloaded, isFailed, isSkipped, onDownload, onOpenFolder, onAlbumClick, onArtistClick, onBack, }: TrackInfoProps) {
     const { playPreview, loadingPreview, playingTrack } = usePreview();
     const hasAlbumClick = !!(onAlbumClick && track.album_id && track.album_url);
     const clickableArtists = buildClickableArtists(track.artists, track.artists_data, track.artist_id, track.artist_url);
@@ -140,16 +136,6 @@ export function TrackInfo({ track, isDownloading, downloadingTrack, isDownloaded
               </TooltipTrigger>
               <TooltipContent>
                 <p>{playingTrack === track.spotify_id ? "Stop Preview" : "Play Preview"}</p>
-              </TooltipContent>
-            </Tooltip>)}
-            {track.spotify_id && onCheckAvailability && (<Tooltip>
-              <TooltipTrigger asChild>
-                <Button onClick={() => onCheckAvailability(track.spotify_id!)} variant="outline" size="icon" disabled={checkingAvailability}>
-                  {checkingAvailability ? (<Spinner />) : availability ? (hasAvailabilityLinks(availability) ? (<CheckCircle className="h-4 w-4 text-green-500"/>) : (<XCircle className="h-4 w-4 text-red-500"/>)) : (<Globe className="h-4 w-4"/>)}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent className="pointer-events-auto">
-                <AvailabilityLinks availability={availability}/>
               </TooltipContent>
             </Tooltip>)}
             {isDownloaded && (<Tooltip>

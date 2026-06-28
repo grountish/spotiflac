@@ -818,6 +818,51 @@ export function useLocalAudioPlayer({ resolveSource }: UseLocalAudioPlayerOption
         },
     }), []);
 
+    // Wire the system media keys (macOS F7/F9, the Now Playing HUD's
+    // skip buttons, and Bluetooth/AirPods controls) to the player. WKWebView
+    // routes these through the MediaSession API rather than as keydown events,
+    // so previous/next stay dead until explicit action handlers are registered.
+    // play/pause is left to WKWebView's working default (F8).
+    useEffect(() => {
+        if (typeof navigator === "undefined" || !("mediaSession" in navigator)) {
+            return;
+        }
+        const mediaSession = navigator.mediaSession;
+        mediaSession.setActionHandler("previoustrack", () => {
+            void playPrevious();
+        });
+        mediaSession.setActionHandler("nexttrack", () => {
+            void playNext();
+        });
+        return () => {
+            mediaSession.setActionHandler("previoustrack", null);
+            mediaSession.setActionHandler("nexttrack", null);
+        };
+    }, [playPrevious, playNext]);
+
+    // Reflect the current track in the Now Playing HUD so the system overlay,
+    // Control Center, and lock screen show the actual title/artist/art.
+    useEffect(() => {
+        if (typeof navigator === "undefined" || !("mediaSession" in navigator)) {
+            return;
+        }
+        navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+        if (!currentTrack) {
+            navigator.mediaSession.metadata = null;
+            return;
+        }
+        try {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: currentTrack.title,
+                artist: currentTrack.subtitle ?? "",
+                artwork: currentTrack.imageUrl ? [{ src: currentTrack.imageUrl }] : undefined,
+            });
+        }
+        catch {
+            // MediaMetadata unsupported on this engine — HUD falls back to the app name.
+        }
+    }, [currentTrack, isPlaying]);
+
     return {
         currentTrack,
         currentTrackId,

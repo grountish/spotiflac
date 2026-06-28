@@ -1690,27 +1690,6 @@ func (a *App) DownloadAvatar(req AvatarDownloadRequest) (backend.AvatarDownloadR
 	return *resp, nil
 }
 
-func (a *App) CheckTrackAvailability(spotifyTrackID string) (string, error) {
-	if spotifyTrackID == "" {
-		return "", fmt.Errorf("spotify track ID is required")
-	}
-
-	return runWithTimeout(checkOperationTimeout, func() (string, error) {
-		client := backend.NewSongLinkClient()
-		availability, err := client.CheckTrackAvailability(spotifyTrackID)
-		if err != nil {
-			return "", err
-		}
-
-		jsonData, err := json.Marshal(availability)
-		if err != nil {
-			return "", fmt.Errorf("failed to encode response: %v", err)
-		}
-
-		return string(jsonData), nil
-	})
-}
-
 func (a *App) IsFFmpegInstalled() (bool, error) {
 	return backend.IsFFmpegInstalled()
 }
