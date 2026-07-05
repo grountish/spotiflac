@@ -1096,6 +1096,36 @@ func (a *App) OpenConfigFolder() error {
 	return backend.OpenFolderInExplorer(configDir)
 }
 
+// PushToVox copies the given files/folders into the VOX app on a USB-connected
+// iPhone via the `vox-push` CLI. Returns the command output for surfacing errors.
+func (a *App) PushToVox(paths []string) (string, error) {
+	if len(paths) == 0 {
+		return "", fmt.Errorf("no paths provided")
+	}
+	return backend.PushToVox(paths)
+}
+
+// Notify shows a native desktop notification (e.g. when a download completes).
+func (a *App) Notify(title, body string) error {
+	if title == "" && body == "" {
+		return nil
+	}
+	return backend.Notify(title, body)
+}
+
+// PushToR2 uploads the given files/folders to the configured Cloudflare R2 bucket.
+func (a *App) PushToR2(paths []string) (string, error) {
+	if len(paths) == 0 {
+		return "", fmt.Errorf("no paths provided")
+	}
+	return backend.PushToR2(paths)
+}
+
+// TestR2Connection validates the configured R2 credentials against the bucket.
+func (a *App) TestR2Connection() error {
+	return backend.TestR2Connection()
+}
+
 func (a *App) SelectFolder(defaultPath string) (string, error) {
 	return backend.SelectFolderDialog(a.ctx, defaultPath)
 }
