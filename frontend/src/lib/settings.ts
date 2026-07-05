@@ -101,6 +101,13 @@ export interface Settings {
   createPlaylistFolder: boolean;
   playlistOwnerFolderName: boolean;
   createM3u8File: boolean;
+  autoPushToVox: boolean;
+  desktopNotifications: boolean;
+  r2AccountId: string;
+  r2AccessKeyId: string;
+  r2SecretAccessKey: string;
+  r2Bucket: string;
+  autoPushToR2: boolean;
   useFirstArtistOnly: boolean;
   useSingleGenre: boolean;
   embedGenre: boolean;
@@ -220,6 +227,13 @@ export const DEFAULT_SETTINGS: Settings = {
   createPlaylistFolder: true,
   playlistOwnerFolderName: false,
   createM3u8File: false,
+  autoPushToVox: false,
+  desktopNotifications: true,
+  r2AccountId: '',
+  r2AccessKeyId: '',
+  r2SecretAccessKey: '',
+  r2Bucket: '',
+  autoPushToR2: false,
   useFirstArtistOnly: false,
   useSingleGenre: false,
   embedGenre: false,

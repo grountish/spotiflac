@@ -48,7 +48,7 @@ import {
   type FilenamePreset,
 } from '@/lib/settings';
 import { themes, applyTheme } from '@/lib/themes';
-import { SelectFolder, OpenConfigFolder } from '../../wailsjs/go/main/App';
+import { SelectFolder, OpenConfigFolder, TestR2Connection } from '../../wailsjs/go/main/App';
 import { toastWithSound as toast } from '@/lib/toast-with-sound';
 import { ApiStatusTab } from './ApiStatusTab';
 import { AmazonIcon, QobuzIcon, SonglinkIcon, SongstatsIcon, TidalIcon } from './PlatformIcons';
@@ -783,6 +783,97 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest }: Setting
               <div className="border-t pt-6" />
 
               <div className="space-y-4">
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium">Cloudflare R2 (cloud backup)</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Upload downloaded albums to an S3-compatible R2 bucket. Credentials are
+                    stored locally in your config file.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="r2-account-id">Account ID</Label>
+                  <InputWithContext
+                    id="r2-account-id"
+                    value={tempSettings.r2AccountId}
+                    onChange={(e) =>
+                      setTempSettings((prev) => ({ ...prev, r2AccountId: e.target.value }))
+                    }
+                    placeholder="Cloudflare account ID"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="r2-access-key">Access Key ID</Label>
+                  <InputWithContext
+                    id="r2-access-key"
+                    value={tempSettings.r2AccessKeyId}
+                    onChange={(e) =>
+                      setTempSettings((prev) => ({ ...prev, r2AccessKeyId: e.target.value }))
+                    }
+                    placeholder="R2 access key ID"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="r2-secret-key">Secret Access Key</Label>
+                  <InputWithContext
+                    id="r2-secret-key"
+                    value={tempSettings.r2SecretAccessKey}
+                    onChange={(e) =>
+                      setTempSettings((prev) => ({ ...prev, r2SecretAccessKey: e.target.value }))
+                    }
+                    placeholder="R2 secret access key"
+                    type="password"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="r2-bucket">Bucket</Label>
+                  <InputWithContext
+                    id="r2-bucket"
+                    value={tempSettings.r2Bucket}
+                    onChange={(e) =>
+                      setTempSettings((prev) => ({ ...prev, r2Bucket: e.target.value }))
+                    }
+                    placeholder="my-music-bucket"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id="auto-push-to-r2"
+                    checked={tempSettings.autoPushToR2}
+                    onCheckedChange={(checked) =>
+                      setTempSettings((prev) => ({ ...prev, autoPushToR2: checked }))
+                    }
+                  />
+                  <Label htmlFor="auto-push-to-r2" className="text-sm cursor-pointer font-normal">
+                    Upload to R2 after download
+                  </Label>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={async () => {
+                    try {
+                      await saveSettings(tempSettings);
+                      setSavedSettings(tempSettings);
+                      await TestR2Connection();
+                      toast.success('R2 connection OK');
+                    } catch (error) {
+                      toast.error(`R2 test failed: ${error}`);
+                    }
+                  }}>
+                  Test R2 connection
+                </Button>
+              </div>
+
+              <div className="border-t pt-6" />
+
+              <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <Switch
                     id="embed-lyrics"
@@ -984,6 +1075,38 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest }: Setting
                 />
                 <Label htmlFor="create-m3u8-file" className="text-sm cursor-pointer font-normal">
                   Create M3U8 Playlist File
+                </Label>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Switch
+                  id="auto-push-to-vox"
+                  checked={tempSettings.autoPushToVox}
+                  onCheckedChange={(checked) =>
+                    setTempSettings((prev) => ({
+                      ...prev,
+                      autoPushToVox: checked,
+                    }))
+                  }
+                />
+                <Label htmlFor="auto-push-to-vox" className="text-sm cursor-pointer font-normal">
+                  Push to VOX (iPhone) after download
+                </Label>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Switch
+                  id="desktop-notifications"
+                  checked={tempSettings.desktopNotifications}
+                  onCheckedChange={(checked) =>
+                    setTempSettings((prev) => ({
+                      ...prev,
+                      desktopNotifications: checked,
+                    }))
+                  }
+                />
+                <Label htmlFor="desktop-notifications" className="text-sm cursor-pointer font-normal">
+                  Desktop notifications
                 </Label>
               </div>
 

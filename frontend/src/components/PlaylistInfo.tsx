@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Download, FolderOpen, ImageDown, XCircle, Play, Pause, Trash2 } from "lucide-react";
+import { Download, FolderOpen, ImageDown, XCircle, Play, Pause, Trash2, Smartphone, Cloud } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SearchAndSort } from "./SearchAndSort";
@@ -70,6 +70,10 @@ interface PlaylistInfoProps {
     onDownloadAllLyrics?: () => void;
     onDownloadAllCovers?: () => void;
     onDownloadAll: () => void;
+    onPushToVox?: () => void;
+    pushingToVox?: boolean;
+    onPushToR2?: () => void;
+    pushingToR2?: boolean;
     onDownloadSelected: () => void;
     onStopDownload: () => void;
     onOpenFolder: () => void;
@@ -87,7 +91,7 @@ interface PlaylistInfoProps {
     onTrackClick: (track: TrackMetadata) => void;
     onBack?: () => void;
 }
-export function PlaylistInfo({ playlistInfo, trackList, searchQuery, sortBy, selectedTracks, downloadedTracks, failedTracks, skippedTracks, downloadingTrack, isDownloading, bulkDownloadType, downloadProgress, currentDownloadInfo, currentPage, itemsPerPage, downloadedLyrics, failedLyrics, skippedLyrics, downloadingLyricsTrack, downloadedCovers, failedCovers, skippedCovers, downloadingCoverTrack, isMetadataLoading = false, sharedLocalPlayer, onSearchChange, onSortChange, onToggleTrack, onToggleSelectAll, onDownloadTrack, onDownloadLyrics, onDownloadCover, onDownloadAll, onDownloadSelected, onStopDownload, onOpenFolder, onPageChange, onAlbumClick, onArtistClick, onTrackClick, onBack, }: PlaylistInfoProps) {
+export function PlaylistInfo({ playlistInfo, trackList, searchQuery, sortBy, selectedTracks, downloadedTracks, failedTracks, skippedTracks, downloadingTrack, isDownloading, bulkDownloadType, downloadProgress, currentDownloadInfo, currentPage, itemsPerPage, downloadedLyrics, failedLyrics, skippedLyrics, downloadingLyricsTrack, downloadedCovers, failedCovers, skippedCovers, downloadingCoverTrack, isMetadataLoading = false, sharedLocalPlayer, onSearchChange, onSortChange, onToggleTrack, onToggleSelectAll, onDownloadTrack, onDownloadLyrics, onDownloadCover, onDownloadAll, onPushToVox, pushingToVox, onPushToR2, pushingToR2, onDownloadSelected, onStopDownload, onOpenFolder, onPageChange, onAlbumClick, onArtistClick, onTrackClick, onBack, }: PlaylistInfoProps) {
     const settings = getSettings();
     const playlistName = playlistInfo.owner.name;
     const playlistFolderName = buildPlaylistFolderName(playlistName, playlistInfo.owner.display_name, settings.playlistOwnerFolderName);
@@ -228,6 +232,14 @@ export function PlaylistInfo({ playlistInfo, trackList, searchQuery, sortBy, sel
                 {selectedTracks.length > 0 && !localCollection.allTracksDownloaded && (<Button onClick={onDownloadSelected} variant="secondary" disabled={isDownloading}>
                     {isDownloading && bulkDownloadType === "selected" ? (<Spinner />) : (<Download className="h-4 w-4"/>)}
                     Download Selected ({selectedTracks.length.toLocaleString()})
+                  </Button>)}
+                {onPushToVox && localCollection.allTracksDownloaded && (<Button onClick={onPushToVox} variant="outline" disabled={isDownloading || pushingToVox}>
+                    {pushingToVox ? (<Spinner />) : (<Smartphone className="h-4 w-4"/>)}
+                    Push to VOX
+                  </Button>)}
+                {onPushToR2 && localCollection.allTracksDownloaded && (<Button onClick={onPushToR2} variant="outline" disabled={isDownloading || pushingToR2}>
+                    {pushingToR2 ? (<Spinner />) : (<Cloud className="h-4 w-4"/>)}
+                    Push to R2
                   </Button>)}
                 {localCollection.localTrackPaths.size > 0 && (<Tooltip>
                     <TooltipTrigger asChild>

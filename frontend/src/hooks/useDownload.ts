@@ -43,6 +43,12 @@ const CreateM3U8File = (
   filePaths: string[],
 ): Promise<void> =>
   (window as any)['go']['main']['App']['CreateM3U8File'](playlistName, outputDir, filePaths);
+const PushToVox = (paths: string[]): Promise<string> =>
+  (window as any)['go']['main']['App']['PushToVox'](paths);
+const Notify = (title: string, body: string): Promise<void> =>
+  (window as any)['go']['main']['App']['Notify'](title, body);
+const PushToR2 = (paths: string[]): Promise<string> =>
+  (window as any)['go']['main']['App']['PushToR2'](paths);
 const GetTrackISRC = (spotifyId: string): Promise<string> =>
   (window as any)['go']['main']['App']['GetTrackISRC'](spotifyId);
 async function resolveTemplateISRC(
@@ -1580,6 +1586,150 @@ export function useDownload(region: string) {
       );
     }
   };
+  const [pushingToVox, setPushingToVox] = useState(false);
+  const notifyDesktop = (title: string, body: string) => {
+    if (getSettings().desktopNotifications) {
+      Notify(title, body).catch(() => {});
+    }
+  };
+  // Given the real on-disk file paths of a finished download, decide what to hand
+  // to vox-push: if every file shares one parent folder (and it isn't the bare
+  // download root) push that folder so VOX groups it; otherwise push the flat list.
+  const resolvePushTarget = (filePaths: string[], downloadPath: string): string[] => {
+    const files = filePaths.filter((p) => p && p.trim());
+    if (files.length === 0) return [];
+    const dirOf = (p: string) => p.replace(/[/\\][^/\\]*$/, '');
+    const norm = (p: string) => p.replace(/[/\\]+$/, '');
+    const dirs = new Set(files.map(dirOf));
+    if (dirs.size === 1) {
+      const dir = [...dirs][0];
+      if (dir && norm(dir) !== norm(downloadPath)) {
+        return [dir];
+      }
+    }
+    return files;
+  };
+  const pushFilesToVox = async (filePaths: string[]) => {
+    const settings = getSettings();
+    const target = resolvePushTarget(filePaths, settings.downloadPath);
+    if (target.length === 0) {
+      toast.error('No downloaded files found to push to VOX');
+      return;
+    }
+    setPushingToVox(true);
+    toast.info('Pushing to VOX...');
+    try {
+      const out = await PushToVox(target);
+      logger.success(`vox-push done: ${(out || '').trim().split('\n').slice(-1)[0] || 'ok'}`);
+      toast.success('Pushed to VOX');
+      notifyDesktop('Pushed to VOX', 'Files sent to your iPhone');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`vox-push failed: ${msg}`);
+      toast.error(`VOX push failed: ${msg}`);
+      notifyDesktop('VOX push failed', msg);
+    } finally {
+      setPushingToVox(false);
+    }
+  };
+  // Resolve which of an album/playlist's tracks already exist on disk, reusing the
+  // same output-dir + existence-check logic as the downloader, so a manual push
+  // works on an already-downloaded collection without re-downloading.
+  const collectExistingFiles = async (
+    tracks: TrackMetadata[],
+    folderName?: string,
+    isAlbum?: boolean,
+  ): Promise<string[]> => {
+    const tracksWithId = tracks.filter((track) => track.spotify_id);
+    if (tracksWithId.length === 0) return [];
+    const settings = getSettings();
+    let outputDir = settings.downloadPath;
+    const os = settings.operatingSystem;
+    const useAlbumTag = settings.folderTemplate?.includes('{album}');
+    if (settings.createPlaylistFolder && folderName && (!isAlbum || !useAlbumTag)) {
+      outputDir = joinPath(os, outputDir, sanitizePath(folderName.replace(/\//g, ' '), os));
+    }
+    const useAlbumTrackNumber = settings.folderTemplate?.includes('{album}') || false;
+    const audioFormat = getPreferredDownloadAudioFormat(settings);
+    const existenceChecks = tracksWithId.map((track, index) => {
+      const displayArtist =
+        settings.useFirstArtistOnly && track.artists
+          ? getFirstArtist(track.artists)
+          : track.artists;
+      const displayAlbumArtist =
+        settings.useFirstArtistOnly && track.album_artist
+          ? getFirstArtist(track.album_artist)
+          : track.album_artist;
+      return {
+        spotify_id: track.spotify_id || '',
+        track_name: track.name || '',
+        artist_name: displayArtist || '',
+        album_name: track.album_name || '',
+        album_artist: displayAlbumArtist || '',
+        release_date: track.release_date || '',
+        track_number: track.track_number || 0,
+        disc_number: track.disc_number || 0,
+        position: index + 1,
+        use_album_track_number: useAlbumTrackNumber,
+        filename_format: settings.filenameTemplate || '',
+        include_track_number: settings.trackNumber || false,
+        audio_format: audioFormat,
+      };
+    });
+    const results = await CheckFilesExistence(outputDir, settings.downloadPath, existenceChecks);
+    return results
+      .filter((r) => r.exists)
+      .map((r) => r.file_path || '')
+      .filter((p) => p);
+  };
+  const handlePushToVox = async (
+    tracks: TrackMetadata[],
+    folderName?: string,
+    isAlbum?: boolean,
+  ) => {
+    const files = await collectExistingFiles(tracks, folderName, isAlbum);
+    if (files.length === 0) {
+      toast.error('No downloaded files found — download first, then push to VOX');
+      return;
+    }
+    await pushFilesToVox(files);
+  };
+  const [pushingToR2, setPushingToR2] = useState(false);
+  const pushFilesToR2 = async (filePaths: string[]) => {
+    const settings = getSettings();
+    const target = resolvePushTarget(filePaths, settings.downloadPath);
+    if (target.length === 0) {
+      toast.error('No downloaded files found to upload to R2');
+      return;
+    }
+    setPushingToR2(true);
+    toast.info('Uploading to R2...');
+    try {
+      const out = await PushToR2(target);
+      logger.success(`R2 upload: ${(out || '').trim() || 'done'}`);
+      toast.success('Uploaded to R2');
+      notifyDesktop('Uploaded to R2', (out || 'Upload complete').trim());
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`R2 upload failed: ${msg}`);
+      toast.error(`R2 upload failed: ${msg}`);
+      notifyDesktop('R2 upload failed', msg);
+    } finally {
+      setPushingToR2(false);
+    }
+  };
+  const handlePushToR2 = async (
+    tracks: TrackMetadata[],
+    folderName?: string,
+    isAlbum?: boolean,
+  ) => {
+    const files = await collectExistingFiles(tracks, folderName, isAlbum);
+    if (files.length === 0) {
+      toast.error('No downloaded files found — download first, then upload to R2');
+      return;
+    }
+    await pushFilesToR2(files);
+  };
   const handleDownloadAll = async (
     tracks: TrackMetadata[],
     folderName?: string,
@@ -1800,10 +1950,29 @@ export function useDownload(region: string) {
       parts.push(`${errorCount} failed`);
       toast.warning(parts.join(', '));
     }
+    const collectionName = folderName || 'Download';
+    if (successCount > 0) {
+      const extra = errorCount > 0 ? `, ${errorCount} failed` : '';
+      notifyDesktop(
+        'Download complete',
+        `${collectionName} · ${successCount} track${successCount === 1 ? '' : 's'}${extra}`,
+      );
+    } else if (errorCount > 0) {
+      notifyDesktop(
+        'Download failed',
+        `${collectionName} · ${errorCount} track${errorCount === 1 ? '' : 's'} failed`,
+      );
+    }
     if (lossyFallbackCount > 0) {
       toast.warning(
         `${lossyFallbackCount} track${lossyFallbackCount === 1 ? '' : 's'} saved with lossy fallback`,
       );
+    }
+    if (settings.autoPushToVox && finalFilePaths.some((p) => p !== '')) {
+      await pushFilesToVox(finalFilePaths.filter((p) => p !== ''));
+    }
+    if (settings.autoPushToR2 && finalFilePaths.some((p) => p !== '')) {
+      await pushFilesToR2(finalFilePaths.filter((p) => p !== ''));
     }
   };
   const handleStopDownload = () => {
@@ -1828,6 +1997,10 @@ export function useDownload(region: string) {
     handleDownloadTrack,
     handleDownloadSelected,
     handleDownloadAll,
+    handlePushToVox,
+    pushingToVox,
+    handlePushToR2,
+    pushingToR2,
     handleStopDownload,
     resetDownloadedTracks,
   };
