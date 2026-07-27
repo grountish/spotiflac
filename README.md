@@ -12,6 +12,22 @@ Get Spotify tracks in true FLAC from Tidal, Qobuz & Amazon Music — no account 
 
 ### [Download](https://github.com/spotbye/SpotiFLAC/releases)
 
+## Run from Source (Development)
+
+To run the app in development mode with live reload:
+
+```bash
+wails dev
+```
+
+Or without the global `wails` CLI:
+
+```bash
+go run github.com/wailsapp/wails/v2/cmd/wails@v2.12.0 dev
+```
+
+This installs frontend dependencies, starts the Vite dev server on `http://127.0.0.1:5173`, and launches the app with hot reload for changes under `frontend/src`.
+
 ## Build macOS App
 
 To build a native macOS `.app` bundle from this repo:
