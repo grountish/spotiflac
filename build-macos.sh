@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$SCRIPT_DIR"
 APP_PATH="$REPO_ROOT/build/bin/SpotiFLAC.app"
 WAILS_MODULE_VERSION="v2.12.0"
+SLSKD_PUBLISH_DIR="$REPO_ROOT/build/slskd-publish"
+SLSKD_RID="osx-$(uname -m | sed 's/^x86_64$/x64/')"
 
 cleanup_incomplete_bundle() {
   if [[ -d "$APP_PATH" ]] && [[ ! -x "$APP_PATH/Contents/MacOS/SpotiFLAC" ]]; then
@@ -100,6 +102,46 @@ if [[ ! -d "$APP_PATH" ]]; then
   echo "Error: build finished but '$APP_PATH' was not created."
   exit 1
 fi
+
+bundle_slskd() {
+  local csproj="$REPO_ROOT/frontend/third_party/slskd/src/slskd/slskd.csproj"
+  local dest="$APP_PATH/Contents/Resources/third_party/slskd/bin"
+
+  if [[ ! -f "$csproj" ]]; then
+    echo "Error: vendored slskd project not found at '$csproj'."
+    echo "Run: git submodule update --init --recursive"
+    exit 1
+  fi
+
+  require_cmd dotnet
+
+  log "Publishing slskd (self-contained $SLSKD_RID)"
+  rm -rf "$SLSKD_PUBLISH_DIR"
+  dotnet publish "$csproj" \
+    -c Release \
+    -r "$SLSKD_RID" \
+    --self-contained true \
+    -p:PublishTrimmed=false \
+    -o "$SLSKD_PUBLISH_DIR" \
+    --nologo -v quiet
+
+  if [[ ! -x "$SLSKD_PUBLISH_DIR/slskd" ]]; then
+    echo "Error: slskd publish did not produce an executable at '$SLSKD_PUBLISH_DIR/slskd'."
+    exit 1
+  fi
+
+  log "Embedding slskd into app bundle"
+  rm -rf "$APP_PATH/Contents/Resources/third_party"
+  mkdir -p "$dest"
+  cp -R "$SLSKD_PUBLISH_DIR/." "$dest/"
+
+  # Adding files to Contents/ invalidates the signature Wails applied, so re-sign.
+  log "Re-signing app bundle"
+  codesign --force --deep --sign - "$APP_PATH"
+  codesign --verify --deep "$APP_PATH"
+}
+
+bundle_slskd
 
 log "Build complete"
 echo "App bundle created at:"

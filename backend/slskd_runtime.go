@@ -196,6 +196,7 @@ func (m *managedSlskdState) resolveManagedInfo() ManagedSlskdInfo {
 		return info
 	}
 	if repoDir == "" {
+		info.Error = "managed slskd not found: no third_party/slskd directory alongside the executable or working directory"
 		return info
 	}
 
@@ -254,6 +255,8 @@ func findManagedSlskdRepo() (string, error) {
 			candidates := []string{
 				filepath.Join(current, "third_party", managedSlskdRepoFolderName),
 				filepath.Join(current, "frontend", "third_party", managedSlskdRepoFolderName),
+				// Packaged macOS bundle: <App>.app/Contents/Resources/third_party/slskd
+				filepath.Join(current, "Resources", "third_party", managedSlskdRepoFolderName),
 			}
 			for _, candidate := range candidates {
 				if info, err := os.Stat(candidate); err == nil && info.IsDir() {
