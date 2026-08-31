@@ -1126,6 +1126,12 @@ func (a *App) TestR2Connection() error {
 	return backend.TestR2Connection()
 }
 
+// GetR2Usage reports stored bytes, object count and remaining headroom for the
+// configured R2 bucket. Pass refresh to bypass the cached figure.
+func (a *App) GetR2Usage(refresh bool) (backend.R2Usage, error) {
+	return backend.GetR2Usage(refresh)
+}
+
 func (a *App) SelectFolder(defaultPath string) (string, error) {
 	return backend.SelectFolderDialog(a.ctx, defaultPath)
 }

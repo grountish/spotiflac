@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
+import { Progress } from '@/components/ui/progress';
 import {
   getSettings,
   getSettingsWithDefaults,
@@ -48,7 +49,8 @@ import {
   type FilenamePreset,
 } from '@/lib/settings';
 import { themes, applyTheme } from '@/lib/themes';
-import { SelectFolder, OpenConfigFolder, TestR2Connection } from '../../wailsjs/go/main/App';
+import { SelectFolder, OpenConfigFolder, TestR2Connection, GetR2Usage } from '../../wailsjs/go/main/App';
+import type { backend } from '../../wailsjs/go/models';
 import { toastWithSound as toast } from '@/lib/toast-with-sound';
 import { ApiStatusTab } from './ApiStatusTab';
 import { AmazonIcon, QobuzIcon, SonglinkIcon, SongstatsIcon, TidalIcon } from './PlatformIcons';
@@ -56,12 +58,48 @@ interface SettingsPageProps {
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void;
   onResetRequest?: (resetFn: () => void) => void;
 }
+// Decimal units, matching how Cloudflare bills R2 storage.
+function formatBytes(bytes: number): string {
+  if (bytes < 1000) return `${bytes} B`;
+  const units = ['kB', 'MB', 'GB', 'TB', 'PB'];
+  let value = bytes / 1000;
+  let unit = 0;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit++;
+  }
+  return `${value.toFixed(2)} ${units[unit]}`;
+}
 export function SettingsPage({ onUnsavedChangesChange, onResetRequest }: SettingsPageProps) {
   const [savedSettings, setSavedSettings] = useState<SettingsType>(getSettings());
   const [tempSettings, setTempSettings] = useState<SettingsType>(savedSettings);
   const [isDark, setIsDark] = useState(document.documentElement.classList.contains('dark'));
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [r2Usage, setR2Usage] = useState<backend.R2Usage | null>(null);
+  const [r2UsageError, setR2UsageError] = useState('');
+  const [r2UsageLoading, setR2UsageLoading] = useState(false);
   const hasUnsavedChanges = JSON.stringify(savedSettings) !== JSON.stringify(tempSettings);
+
+  const refreshR2Usage = useCallback(async (force: boolean) => {
+    setR2UsageLoading(true);
+    setR2UsageError('');
+    try {
+      setR2Usage(await GetR2Usage(force));
+    } catch (error) {
+      setR2Usage(null);
+      setR2UsageError(String(error));
+    } finally {
+      setR2UsageLoading(false);
+    }
+  }, []);
+
+  // Only probe on open when R2 is actually set up, so unconfigured users do not
+  // see an error they did not ask for.
+  useEffect(() => {
+    if (savedSettings.r2AccountId && savedSettings.r2Bucket && savedSettings.r2AccessKeyId) {
+      refreshR2Usage(false);
+    }
+  }, [savedSettings.r2AccountId, savedSettings.r2Bucket, savedSettings.r2AccessKeyId, refreshR2Usage]);
   const resetToSaved = useCallback(() => {
     const freshSavedSettings = getSettings();
     flushSync(() => {
@@ -838,6 +876,91 @@ export function SettingsPage({ onUnsavedChangesChange, onResetRequest }: Setting
                     }
                     placeholder="my-music-bucket"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="r2-quota">Storage limit (GB)</Label>
+                  <InputWithContext
+                    id="r2-quota"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={String(tempSettings.r2QuotaGB)}
+                    onChange={(e) =>
+                      setTempSettings((prev) => ({
+                        ...prev,
+                        r2QuotaGB: Number(e.target.value) || 0,
+                      }))
+                    }
+                    placeholder="10"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    The Cloudflare R2 free tier is 10 GB. Set 0 for no limit.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id="r2-enforce-quota"
+                    checked={tempSettings.r2EnforceQuota}
+                    onCheckedChange={(checked) =>
+                      setTempSettings((prev) => ({ ...prev, r2EnforceQuota: checked }))
+                    }
+                  />
+                  <Label htmlFor="r2-enforce-quota" className="text-sm cursor-pointer font-normal">
+                    Block uploads that would exceed the limit
+                  </Label>
+                </div>
+
+                <div className="rounded-md border p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-sm font-medium">Storage used</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={r2UsageLoading}
+                      onClick={() => refreshR2Usage(true)}>
+                      {r2UsageLoading ? 'Checking…' : 'Refresh'}
+                    </Button>
+                  </div>
+
+                  {r2Usage ? (
+                    <>
+                      <Progress value={Math.min(r2Usage.percent, 100)} />
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>
+                          {formatBytes(r2Usage.bytes)}
+                          {r2Usage.limitBytes > 0
+                            ? ` of ${formatBytes(r2Usage.limitBytes)} (${r2Usage.percent.toFixed(1)}%)`
+                            : ' used (no limit set)'}
+                        </span>
+                        <span>{r2Usage.objects.toLocaleString()} objects</span>
+                      </div>
+                      {r2Usage.limitBytes > 0 && (
+                        <p
+                          className={
+                            r2Usage.freeBytes === 0
+                              ? 'text-xs text-destructive'
+                              : 'text-xs text-muted-foreground'
+                          }>
+                          {r2Usage.freeBytes === 0
+                            ? r2Usage.enforced
+                              ? 'Full — further uploads will be blocked.'
+                              : 'Full — uploads are still allowed because blocking is off.'
+                            : `${formatBytes(r2Usage.freeBytes)} free`}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {r2UsageError
+                        ? `Could not read usage: ${r2UsageError}`
+                        : r2UsageLoading
+                          ? 'Reading bucket…'
+                          : 'Save your R2 credentials, then refresh to see usage.'}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-3">

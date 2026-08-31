@@ -108,6 +108,8 @@ export interface Settings {
   r2SecretAccessKey: string;
   r2Bucket: string;
   autoPushToR2: boolean;
+  r2QuotaGB: number;
+  r2EnforceQuota: boolean;
   useFirstArtistOnly: boolean;
   useSingleGenre: boolean;
   embedGenre: boolean;
@@ -234,6 +236,8 @@ export const DEFAULT_SETTINGS: Settings = {
   r2SecretAccessKey: '',
   r2Bucket: '',
   autoPushToR2: false,
+  r2QuotaGB: 10,
+  r2EnforceQuota: true,
   useFirstArtistOnly: false,
   useSingleGenre: false,
   embedGenre: false,
